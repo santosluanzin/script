@@ -1,0 +1,705 @@
+print("[SINK] Menu Compacto + Scroll + Travar Voo + Save Posição")
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- ======================== SISTEMA DE SALVAMENTO ========================
+local Config = {
+    VelocidadeImpulso = 120,
+    VelocidadeVoo = 80,
+    FloatPosImpulsoX = 0.85,
+    FloatPosImpulsoY = 0.5,
+    FloatPosVooX = 0.85,
+    FloatPosVooY = 0.4
+}
+
+local function SalvarConfig()
+    pcall(function()
+        writefile("SintoniaFarm_Config.json", HttpService:JSONEncode(Config))
+    end)
+end
+
+local function CarregarConfig()
+    if isfile and isfile("SintoniaFarm_Config.json") then
+        local ok, data = pcall(function() return HttpService:JSONDecode(readfile("SintoniaFarm_Config.json")) end)
+        if ok and data then
+            if data.VelocidadeImpulso then Config.VelocidadeImpulso = data.VelocidadeImpulso end
+            if data.VelocidadeVoo then Config.VelocidadeVoo = data.VelocidadeVoo end
+            if data.FloatPosImpulsoX then Config.FloatPosImpulsoX = data.FloatPosImpulsoX end
+            if data.FloatPosImpulsoY then Config.FloatPosImpulsoY = data.FloatPosImpulsoY end
+            if data.FloatPosVooX then Config.FloatPosVooX = data.FloatPosVooX end
+            if data.FloatPosVooY then Config.FloatPosVooY = data.FloatPosVooY end
+        end
+    end
+end
+CarregarConfig()
+
+-- ======================== VARIÁVEIS ========================
+local posA = nil
+local isFarming = false
+local autoPromptOn = false
+local autoPromptCooldown = {}
+local isLocked = false
+local isLockedVoo = false
+local isImpulseOn = false
+
+-- Variáveis do Voo
+local isVooAtivo = false
+local isHoldingVoo = false
+local vooLoopRunning = false
+local baseAtiva = false
+local blocoBase = nil
+
+local vooTempoApertou = 0
+local TOQUE_RAPIDO_MAX = 0.25
+
+-- ======================== CRIAR O MENU ========================
+local gui = Instance.new("ScreenGui")
+gui.Name = "SinkMenu"
+gui.ResetOnSpawn = false
+gui.Parent = playerGui
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 170, 0, 270)
+frame.Position = UDim2.new(0, 20, 0, 20)
+frame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Parent = gui
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
+frame.ClipsDescendants = true
+
+local dragBar = Instance.new("Frame")
+dragBar.Size = UDim2.new(1, 0, 0, 24)
+dragBar.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+dragBar.BorderSizePixel = 0
+dragBar.Parent = frame
+Instance.new("UICorner", dragBar).CornerRadius = UDim.new(0, 8)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -30, 1, 0)
+title.Position = UDim2.new(0, 8, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "Sintonia Farm"
+title.TextColor3 = Color3.new(1, 1, 1)
+title.TextSize = 12
+title.Font = Enum.Font.GothamBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = dragBar
+
+local minBtn = Instance.new("TextButton")
+minBtn.Size = UDim2.new(0, 20, 0, 20)
+minBtn.Position = UDim2.new(1, -24, 0, 2)
+minBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 95)
+minBtn.Text = "-"
+minBtn.TextColor3 = Color3.new(1, 1, 1)
+minBtn.TextSize = 14
+minBtn.Font = Enum.Font.GothamBold
+minBtn.BorderSizePixel = 0
+minBtn.Parent = dragBar
+Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 4)
+
+local scroll = Instance.new("ScrollingFrame")
+scroll.Size = UDim2.new(1, 0, 1, -24)
+scroll.Position = UDim2.new(0, 0, 0, 24)
+scroll.BackgroundTransparency = 1
+scroll.BorderSizePixel = 0
+scroll.ScrollBarThickness = 4
+scroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 110)
+scroll.CanvasSize = UDim2.new(0, 0, 0, 400)
+scroll.Parent = frame
+
+local function mkBtn(txt, y, color, height)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, -16, 0, height or 28)
+    b.Position = UDim2.new(0, 8, 0, y)
+    b.BackgroundColor3 = color
+    b.Text = txt
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.TextSize = 11
+    b.Font = Enum.Font.GothamBold
+    b.BorderSizePixel = 0
+    b.Parent = scroll
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    return b
+end
+
+local setPos1Btn = mkBtn("MARCAR PONTO A (Moto)", 4, Color3.fromRGB(50, 150, 200))
+local autoPromptBtn = mkBtn("AUTO PROMPT: OFF", 36, Color3.fromRGB(100, 100, 110))
+local farmBtn = mkBtn("AUTO FARM: OFF", 68, Color3.fromRGB(100, 100, 110))
+
+local velLabel = Instance.new("TextLabel")
+velLabel.Size = UDim2.new(1, -16, 0, 14)
+velLabel.Position = UDim2.new(0, 8, 0, 104)
+velLabel.BackgroundTransparency = 1
+velLabel.Text = "VELOCIDADE DO IMPULSO:"
+velLabel.TextColor3 = Color3.fromRGB(180, 180, 190)
+velLabel.TextSize = 10
+velLabel.Font = Enum.Font.Gotham
+velLabel.TextXAlignment = Enum.TextXAlignment.Left
+velLabel.Parent = scroll
+
+local speedBox = Instance.new("TextBox")
+speedBox.Size = UDim2.new(1, -16, 0, 24)
+speedBox.Position = UDim2.new(0, 8, 0, 120)
+speedBox.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+speedBox.TextColor3 = Color3.new(1, 1, 1)
+speedBox.Text = tostring(Config.VelocidadeImpulso)
+speedBox.TextSize = 12
+speedBox.Font = Enum.Font.Gotham
+speedBox.BorderSizePixel = 0
+speedBox.Parent = scroll
+Instance.new("UICorner", speedBox).CornerRadius = UDim.new(0, 6)
+
+local velVooLabel = Instance.new("TextLabel")
+velVooLabel.Size = UDim2.new(1, -16, 0, 14)
+velVooLabel.Position = UDim2.new(0, 8, 0, 150)
+velVooLabel.BackgroundTransparency = 1
+velVooLabel.Text = "VELOCIDADE DO VOO:"
+velVooLabel.TextColor3 = Color3.fromRGB(180, 180, 190)
+velVooLabel.TextSize = 10
+velVooLabel.Font = Enum.Font.Gotham
+velVooLabel.TextXAlignment = Enum.TextXAlignment.Left
+velVooLabel.Parent = scroll
+
+local speedVooBox = Instance.new("TextBox")
+speedVooBox.Size = UDim2.new(1, -16, 0, 24)
+speedVooBox.Position = UDim2.new(0, 8, 0, 166)
+speedVooBox.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+speedVooBox.TextColor3 = Color3.new(1, 1, 1)
+speedVooBox.Text = tostring(Config.VelocidadeVoo)
+speedVooBox.TextSize = 12
+speedVooBox.Font = Enum.Font.Gotham
+speedVooBox.BorderSizePixel = 0
+speedVooBox.Parent = scroll
+Instance.new("UICorner", speedVooBox).CornerRadius = UDim.new(0, 6)
+
+local onOffBtn = mkBtn("BOTÃO IMPULSO: OFF", 202, Color3.fromRGB(200, 50, 50))
+local lockBtn = mkBtn("TRAVAR BOTÃO: OFF", 234, Color3.fromRGB(100, 100, 110))
+local vooBtn = mkBtn("BOTÃO VOAR: OFF", 268, Color3.fromRGB(200, 50, 50))
+local lockVooBtn = mkBtn("TRAVAR VOAR: OFF", 300, Color3.fromRGB(100, 100, 110))
+local baseBtn = mkBtn("BASE DE QUEDA: OFF", 334, Color3.fromRGB(100, 100, 110))
+
+-- ======================== LÓGICA DE ARRASTAR ========================
+local function makeDraggable(obj, dragArea)
+    local dragging, dragInput, dragStart, startPos
+    dragArea.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; dragStart = input.Position; startPos = obj.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    dragArea.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            obj.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+makeDraggable(frame, dragBar)
+
+-- ======================== SALVAMENTO DOS TEXTBOX ========================
+speedBox.FocusLost:Connect(function()
+    local num = tonumber(speedBox.Text)
+    if num and num > 0 then Config.VelocidadeImpulso = num; SalvarConfig()
+    else speedBox.Text = tostring(Config.VelocidadeImpulso) end
+end)
+
+speedVooBox.FocusLost:Connect(function()
+    local num = tonumber(speedVooBox.Text)
+    if num and num > 0 then Config.VelocidadeVoo = num; SalvarConfig()
+    else speedVooBox.Text = tostring(Config.VelocidadeVoo) end
+end)
+
+-- ======================== BOTÕES FLUTUANTES ========================
+local floatBtn = Instance.new("TextButton")
+floatBtn.Size = UDim2.new(0, 100, 0, 45)
+floatBtn.Position = UDim2.new(Config.FloatPosImpulsoX, 0, Config.FloatPosImpulsoY, 0)
+floatBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+floatBtn.TextColor3 = Color3.new(1, 1, 1)
+floatBtn.Text = "IMPULSO"
+floatBtn.TextSize = 14
+floatBtn.Font = Enum.Font.GothamBold
+floatBtn.BorderSizePixel = 0
+floatBtn.Visible = false
+floatBtn.Active = true
+floatBtn.Parent = gui
+Instance.new("UICorner", floatBtn).CornerRadius = UDim.new(0, 8)
+local stroke = Instance.new("UIStroke"); stroke.Color = Color3.fromRGB(0, 170, 255); stroke.Thickness = 2; stroke.Parent = floatBtn
+
+local draggingFloat, dragInputFloat, dragStartFloat, startPosFloat
+floatBtn.InputBegan:Connect(function(input)
+    if isLocked then return end 
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        draggingFloat = true; dragStartFloat = input.Position; startPosFloat = floatBtn.Position
+        input.Changed:Connect(function() 
+            if input.UserInputState == Enum.UserInputState.End then 
+                draggingFloat = false 
+                -- SALVAR POSIÇÃO DO IMPULSO
+                Config.FloatPosImpulsoX = floatBtn.Position.X.Scale
+                Config.FloatPosImpulsoY = floatBtn.Position.Y.Scale
+                SalvarConfig()
+            end 
+        end)
+    end
+end)
+floatBtn.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInputFloat = input end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInputFloat and draggingFloat and not isLocked then
+        local delta = input.Position - dragStartFloat
+        floatBtn.Position = UDim2.new(startPosFloat.X.Scale, startPosFloat.X.Offset + delta.X, startPosFloat.Y.Scale, startPosFloat.Y.Offset + delta.Y)
+    end
+end)
+
+floatBtn.MouseButton1Click:Connect(function()
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        local hrp = char.HumanoidRootPart
+        hrp.AssemblyLinearVelocity = Camera.CFrame.LookVector * Config.VelocidadeImpulso
+    end
+end)
+
+local floatVooBtn = Instance.new("TextButton")
+floatVooBtn.Size = UDim2.new(0, 60, 0, 60)
+floatVooBtn.Position = UDim2.new(Config.FloatPosVooX, 0, Config.FloatPosVooY, 0)
+floatVooBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+floatVooBtn.TextColor3 = Color3.new(1, 1, 1)
+floatVooBtn.Text = "🚀"
+floatVooBtn.TextSize = 24
+floatVooBtn.Font = Enum.Font.GothamBold
+floatVooBtn.BorderSizePixel = 0
+floatVooBtn.Visible = false
+floatVooBtn.Active = true
+floatVooBtn.Parent = gui
+Instance.new("UICorner", floatVooBtn).CornerRadius = UDim.new(1, 0)
+local strokeVoo = Instance.new("UIStroke"); strokeVoo.Color = Color3.fromRGB(255, 255, 255); strokeVoo.Thickness = 2; strokeVoo.Parent = floatVooBtn
+
+local draggingVoo, dragInputVoo, dragStartVoo, startPosVoo
+floatVooBtn.InputBegan:Connect(function(input)
+    if isLockedVoo then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        draggingVoo = true; dragStartVoo = input.Position; startPosVoo = floatVooBtn.Position
+        input.Changed:Connect(function() 
+            if input.UserInputState == Enum.UserInputState.End then 
+                draggingVoo = false 
+                -- SALVAR POSIÇÃO DO VOO
+                Config.FloatPosVooX = floatVooBtn.Position.X.Scale
+                Config.FloatPosVooY = floatVooBtn.Position.Y.Scale
+                SalvarConfig()
+            end 
+        end)
+    end
+end)
+floatVooBtn.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInputVoo = input end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInputVoo and draggingVoo and not isLockedVoo then
+        local delta = input.Position - dragStartVoo
+        floatVooBtn.Position = UDim2.new(startPosVoo.X.Scale, startPosVoo.X.Offset + delta.X, startPosVoo.Y.Scale, startPosVoo.Y.Offset + delta.Y)
+    end
+end)
+
+-- ======================== LÓGICA DO VOO ========================
+local function aplicarVoo()
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        local hrp = char.HumanoidRootPart
+        local camLook = Camera.CFrame.LookVector
+        hrp.AssemblyLinearVelocity = Vector3.new(camLook.X * Config.VelocidadeVoo, camLook.Y * Config.VelocidadeVoo, camLook.Z * Config.VelocidadeVoo)
+    end
+end
+
+floatVooBtn.MouseButton1Down:Connect(function()
+    isHoldingVoo = true
+    vooTempoApertou = tick()
+    aplicarVoo()
+
+    if baseAtiva and blocoBase then
+        blocoBase.Transparency = 1
+        blocoBase.CanCollide = false
+        blocoBase.Anchored = true
+        blocoBase.Position = Vector3.new(0, -1000, 0)
+    end
+
+    if not vooLoopRunning then
+        vooLoopRunning = true
+        task.spawn(function()
+            while isHoldingVoo do
+                task.wait(1.0)
+                if isHoldingVoo then
+                    aplicarVoo()
+                end
+            end
+            vooLoopRunning = false
+        end)
+    end
+end)
+
+local function pararVoo()
+    isHoldingVoo = false
+end
+
+floatVooBtn.MouseButton1Up:Connect(pararVoo)
+floatVooBtn.MouseButton1Up:Connect(pararVoo)
+floatVooBtn.MouseButton1Click:Connect(function()
+    local duracao = tick() - vooTempoApertou
+    if duracao < TOQUE_RAPIDO_MAX then
+        aplicarVoo()
+    end
+end)
+
+-- ======================== BASE DE QUEDA (CONDICIONAL) ========================
+RunService.Heartbeat:Connect(function()
+    if not baseAtiva then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local velocidade = hrp.AssemblyLinearVelocity
+    local velVertical = velocidade.Y
+    local velHorizontal = Vector3.new(velocidade.X, 0, velocidade.Z).Magnitude
+
+    if isHoldingVoo then
+        if blocoBase then
+            blocoBase.Transparency = 1
+            blocoBase.CanCollide = false
+            blocoBase.Anchored = true
+            blocoBase.Position = Vector3.new(0, -1000, 0)
+        end
+        return
+    end
+
+    local estaPlanando = (velHorizontal > 40)
+    
+    if estaPlanando then
+        if blocoBase then
+            blocoBase.Transparency = 1
+            blocoBase.CanCollide = false
+            blocoBase.Anchored = true
+            blocoBase.Position = Vector3.new(0, -1000, 0)
+        end
+    else
+        if not blocoBase or not blocoBase.Parent then
+            local bloco = Instance.new("Part")
+            bloco.Name = "BaseQueda"
+            bloco.Size = Vector3.new(4, 0.5, 4)
+            bloco.Transparency = 0.5
+            bloco.Color = Color3.fromRGB(0, 170, 255)
+            bloco.Material = Enum.Material.Neon
+            bloco.CanCollide = false
+            bloco.Anchored = true
+            bloco.Parent = Workspace
+            blocoBase = bloco
+        end
+        blocoBase.CFrame = CFrame.new(hrp.Position - Vector3.new(0, 3.2, 0))
+        blocoBase.Anchored = true
+        blocoBase.Transparency = 0.5
+        blocoBase.CanCollide = true
+    end
+end)
+
+baseBtn.MouseButton1Click:Connect(function()
+    baseAtiva = not baseAtiva
+    if baseAtiva then
+        baseBtn.Text = "BASE DE QUEDA: ON"
+        baseBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+    else
+        baseBtn.Text = "BASE DE QUEDA: OFF"
+        baseBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 110)
+        if blocoBase then blocoBase:Destroy(); blocoBase = nil end
+    end
+end)
+
+-- ======================== LIGAR/DESLIGAR ========================
+onOffBtn.MouseButton1Click:Connect(function()
+    isImpulseOn = not isImpulseOn
+    if isImpulseOn then
+        onOffBtn.Text = "BOTÃO IMPULSO: ON"
+        onOffBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+        floatBtn.Visible = true
+    else
+        onOffBtn.Text = "BOTÃO IMPULSO: OFF"
+        onOffBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        floatBtn.Visible = false
+    end
+end)
+
+lockBtn.MouseButton1Click:Connect(function()
+    isLocked = not isLocked
+    if isLocked then
+        lockBtn.Text = "TRAVAR BOTÃO: ON"
+        lockBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        floatBtn.Text = "TRAVADO"
+    else
+        lockBtn.Text = "TRAVAR BOTÃO: OFF"
+        lockBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 110)
+        floatBtn.Text = "IMPULSO"
+    end
+end)
+
+vooBtn.MouseButton1Click:Connect(function()
+    isVooAtivo = not isVooAtivo
+    if isVooAtivo then
+        vooBtn.Text = "BOTÃO VOAR: ON"
+        vooBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+        floatVooBtn.Visible = true
+    else
+        vooBtn.Text = "BOTÃO VOAR: OFF"
+        vooBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        floatVooBtn.Visible = false
+    end
+end)
+
+lockVooBtn.MouseButton1Click:Connect(function()
+    isLockedVoo = not isLockedVoo
+    if isLockedVoo then
+        lockVooBtn.Text = "TRAVAR VOAR: ON"
+        lockVooBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        floatVooBtn.Text = "🔒"
+    else
+        lockVooBtn.Text = "TRAVAR VOAR: OFF"
+        lockVooBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 110)
+        floatVooBtn.Text = "🚀"
+    end
+end)
+
+-- ======================== MINIMIZAR ========================
+local miniBar = Instance.new("Frame")
+miniBar.Size = UDim2.new(0, 170, 0, 24)
+miniBar.Position = frame.Position
+miniBar.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+miniBar.BorderSizePixel = 0
+miniBar.Visible = false
+miniBar.Parent = gui
+Instance.new("UICorner", miniBar).CornerRadius = UDim.new(0, 8)
+
+local miniTitle = Instance.new("TextLabel")
+miniTitle.Size = UDim2.new(1, -30, 1, 0)
+miniTitle.Position = UDim2.new(0, 8, 0, 0)
+miniTitle.BackgroundTransparency = 1
+miniTitle.Text = "Sintonia Farm"
+miniTitle.TextColor3 = Color3.new(1, 1, 1)
+miniTitle.TextSize = 12
+miniTitle.Font = Enum.Font.GothamBold
+miniTitle.TextXAlignment = Enum.TextXAlignment.Left
+miniTitle.Parent = miniBar
+
+local maxBtn = Instance.new("TextButton")
+maxBtn.Size = UDim2.new(0, 20, 0, 20)
+maxBtn.Position = UDim2.new(1, -24, 0, 2)
+maxBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 95)
+maxBtn.Text = "+"
+maxBtn.TextColor3 = Color3.new(1, 1, 1)
+maxBtn.TextSize = 14
+maxBtn.Font = Enum.Font.GothamBold
+maxBtn.BorderSizePixel = 0
+maxBtn.Parent = miniBar
+Instance.new("UICorner", maxBtn).CornerRadius = UDim.new(0, 4)
+
+makeDraggable(miniBar, miniTitle)
+
+minBtn.MouseButton1Click:Connect(function()
+    frame.Visible = false
+    miniBar.Position = frame.Position
+    miniBar.Visible = true
+end)
+
+maxBtn.MouseButton1Click:Connect(function()
+    frame.Position = miniBar.Position
+    frame.Visible = true
+    miniBar.Visible = false
+end)
+
+-- ======================== LÓGICA DO FARM ========================
+local function getAllEntregas()
+    local food = workspace:FindFirstChild("SintoniaFood")
+    if not food then return {} end
+    local locais = food:FindFirstChild("Locais")
+    if not locais then return {} end
+    local out = {}
+    for _, obj in ipairs(locais:GetDescendants()) do
+        if obj.Name == "Entrega" and obj:IsA("BasePart") then table.insert(out, obj) end
+    end
+    return out
+end
+
+local function snapshotAllEntregas()
+    local out = {}
+    for _, obj in ipairs(getAllEntregas()) do
+        out[obj] = { Color = obj.Color, Material = obj.Material, Transparency = obj.Transparency, Children = {} }
+        for _, d in ipairs(obj:GetDescendants()) do
+            local e = { Path = d }
+            if d:IsA("BillboardGui") then e.Enabled = d.Enabled
+            elseif d:IsA("ProximityPrompt") then e.Enabled = d.Enabled
+            elseif d:IsA("ImageLabel") or d:IsA("ImageButton") then e.Visible = d.Visible; e.Image = d.Image end
+            table.insert(out[obj].Children, e)
+        end
+    end
+    return out
+end
+
+local function diffEntregas(before)
+    local scored = {}
+    local afterSnapshot = snapshotAllEntregas()
+    for obj, beforeSnap in pairs(before) do
+        if obj and obj.Parent then
+            local afterSnap = afterSnapshot[obj]
+            if afterSnap then
+                local score = 0
+                local beforeMap = {}
+                for _, e in ipairs(beforeSnap.Children) do beforeMap[e.Path] = e end
+                for _, eAfter in ipairs(afterSnap.Children) do
+                    local eBefore = beforeMap[eAfter.Path]
+                    if eBefore then
+                        if eBefore.Enabled ~= eAfter.Enabled then score = score + 50 end
+                        if eBefore.Visible ~= eAfter.Visible then score = score + 50 end
+                        if eBefore.Image ~= eAfter.Image then score = score + 30 end
+                    else
+                        score = score + 100
+                    end
+                end
+                if score > 0 then table.insert(scored, { Obj = obj, Score = score }) end
+            end
+        end
+    end
+    table.sort(scored, function(a, b) return a.Score > b.Score end)
+    return scored
+end
+
+local function findMotoByName()
+    for _, obj in ipairs(getAllEntregas()) do
+        local p = obj:FindFirstChild("Entregar", true)
+        if p and p.Enabled then
+            for _, d in ipairs(obj:GetDescendants()) do
+                local n = d.Name:lower()
+                if n:find("moto") or n:find("bike") or n:find("delivery") or n:find("icon") then return obj end
+            end
+        end
+    end
+    return nil
+end
+
+local function fakeSeatTP(targetPos)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
+    hrp.CanCollide = false
+    hum.PlatformStand = true 
+    hum:ChangeState(Enum.HumanoidStateType.Physics)
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.AssemblyAngularVelocity = Vector3.zero
+    hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+    hrp.Anchored = true
+    task.wait(1.5)
+    if hrp and hrp.Parent then
+        hrp.Anchored = false
+        hrp.CanCollide = true
+        hum.PlatformStand = false
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
+    task.wait(0.1)
+end
+
+setPos1Btn.MouseButton1Click:Connect(function()
+    local c = LocalPlayer.Character
+    if c and c:FindFirstChild("HumanoidRootPart") then
+        posA = c.HumanoidRootPart.Position
+        setPos1Btn.Text = "PONTO A MARCADO!"
+        setPos1Btn.BackgroundColor3 = Color3.fromRGB(70, 200, 70)
+    end
+end)
+
+local function autoPromptLoop()
+    while autoPromptOn do
+        local char = LocalPlayer.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local now = tick()
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("ProximityPrompt") and obj.Enabled then
+                        local parent = obj.Parent
+                        local pos = (parent:IsA("BasePart") and parent.Position) or (parent.PrimaryPart and parent.PrimaryPart.Position)
+                        if pos and (pos - hrp.Position).Magnitude < (obj.MaxActivationDistance + 3) then
+                            if not autoPromptCooldown[obj] or now - autoPromptCooldown[obj] > 1.0 then
+                                autoPromptCooldown[obj] = now
+                                if type(fireproximityprompt) == "function" then pcall(fireproximityprompt, obj) end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.2)
+    end
+end
+
+autoPromptBtn.MouseButton1Click:Connect(function()
+    autoPromptOn = not autoPromptOn
+    if autoPromptOn then
+        autoPromptBtn.Text = "AUTO PROMPT: ON"
+        autoPromptBtn.BackgroundColor3 = Color3.fromRGB(70, 200, 70)
+        task.spawn(autoPromptLoop)
+    else
+        autoPromptBtn.Text = "AUTO PROMPT: OFF"
+        autoPromptBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 110)
+    end
+end)
+
+local function farmLoop()
+    while isFarming do
+        local snapBefore = snapshotAllEntregas()
+        fakeSeatTP(posA)
+        task.wait(1.0)
+        local target = findMotoByName()
+        if not target then
+            local scored = diffEntregas(snapBefore)
+            if #scored > 0 then target = scored[1].Obj end
+        end
+        if target then
+            fakeSeatTP(target.Position)
+            task.wait(1.0)
+            fakeSeatTP(posA)
+            task.wait(0.5)
+        else
+            task.wait(2)
+        end
+    end
+end
+
+farmBtn.MouseButton1Click:Connect(function()
+    if not isFarming then
+        if not posA then
+            farmBtn.Text = "ERRO: MARQUE PONTO A!"
+            task.wait(2)
+            farmBtn.Text = "AUTO FARM: OFF"
+            return
+        end
+        isFarming = true
+        farmBtn.Text = "AUTO FARM: ON"
+        farmBtn.BackgroundColor3 = Color3.fromRGB(70, 200, 70)
+        task.spawn(farmLoop)
+    else
+        isFarming = false
+        farmBtn.Text = "AUTO FARM: OFF"
+        farmBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 110)
+    end
+end)

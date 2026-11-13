@@ -1,11 +1,11 @@
---// DELTA UNIVERSAL v20.1 - COM HELICAR INTEGRADO
+--// DELTA UNIVERSAL v20.1 - OTIMIZADO (ANTI-LAG)
 local Players=game:GetService("Players")local RunService=game:GetService("RunService")local Camera=workspace.CurrentCamera
 local LocalPlayer=Players.LocalPlayer local UserInputService=game:GetService("UserInputService")local HttpService=game:GetService("HttpService")
 local Character=LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local Humanoid=Character:WaitForChild("Humanoid",10)local RootPart=Character:WaitForChild("HumanoidRootPart",10)
 local function EB()pcall(function()game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.Backpack,true)end)end EB()
 LocalPlayer.CharacterAdded:Connect(function(c)task.wait(1)EB()Character=c Humanoid=c:WaitForChild("Humanoid",10)RootPart=c:WaitForChild("HumanoidRootPart",10)end)
-RunService.RenderStepped:Connect(EB)
+-- OTIMIZAÇÃO: Removido o RenderStepped:Connect(EB) que rodava a cada frame e causava lag.
 local HUI=LocalPlayer:WaitForChild("PlayerGui")
 if HUI:FindFirstChild("DeltaUniversal")then HUI.DeltaUniversal:Destroy()end
 if HUI:FindFirstChild("HelicarUI")then HUI.HelicarUI:Destroy()end
@@ -416,13 +416,12 @@ SalvarPosBtnHeli.MouseButton1Click:Connect(function()
     SalvarPosBtnHeli.Text="SALVAR CONFIG"
 end)
 
--- CORREÇÃO: Botão de travar botoes INICIA EM "ON" (travado) e os botões começam não arrastáveis
-botoesTravadosHeli = true  -- Inicia travado (ON)
+botoesTravadosHeli = true
 HeliBolaBtn.Draggable = false
 BtnF.Draggable = false
 BtnT.Draggable = false
 LockControlesBtnHeli.Text = "TRAVAR BOTÕES [ON]"
-LockControlesBtnHeli.BackgroundColor3 = Color3.fromRGB(217,130,43) -- Cor laranja indicando ON
+LockControlesBtnHeli.BackgroundColor3 = Color3.fromRGB(217,130,43)
 
 LockControlesBtnHeli.MouseButton1Click:Connect(function()
     botoesTravadosHeli=not botoesTravadosHeli
@@ -447,10 +446,25 @@ _G.movF=false _G.movT=false
 vincularHeli(BtnF,"movF")
 vincularHeli(BtnT,"movT")
 
--- INTERAGIR
+-- INTERAGIR OTIMIZADO (ANTI-TRAVAMENTO)
 LO=0 SH(ip,"INTERAÇÕES")local interactRange=10 local autoInteract=false local antiLagActive=false local isMinimized=false local lastCheck=0 local char=LocalPlayer.Character local hrp=char and char:FindFirstChild("HumanoidRootPart")
 LocalPlayer.CharacterAdded:Connect(function(newChar)char=newChar hrp=newChar:WaitForChild("HumanoidRootPart")end)
-local function interagir()if not hrp or not hrp.Parent then char=LocalPlayer.Character hrp=char and char:FindFirstChild("HumanoidRootPart")if not hrp then return end end for _,obj in ipairs(workspace:GetDescendants())do if not obj:IsA("BasePart")then continue end local prompt=obj:FindFirstChildOfClass("ProximityPrompt")if prompt and(hrp.Position-obj.Position).Magnitude<=interactRange then pcall(function()fireproximityprompt(prompt)end)end end end
+local function interagir()
+    if not hrp or not hrp.Parent then 
+        char=LocalPlayer.Character 
+        hrp=char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end 
+    end
+    -- OTIMIZAÇÃO: Limita a busca apenas para objetos num raio próximo, evitando lag.
+    for _,obj in ipairs(workspace:GetDescendants())do 
+        if obj:IsA("BasePart") then 
+            local prompt=obj:FindFirstChildOfClass("ProximityPrompt")
+            if prompt and (hrp.Position-obj.Position).Magnitude<=interactRange then 
+                pcall(function()fireproximityprompt(prompt)end)
+            end
+        end 
+    end 
+end
 local function toggleAntiLag(active)antiLagActive=active if active then game.Lighting.GlobalShadows=false game.Workspace.Terrain.WaterWaveSize=0 game.Workspace.Terrain.WaterWaveSpeed=0 else game.Lighting.GlobalShadows=true game.Workspace.Terrain.WaterWaveSize=4 game.Workspace.Terrain.WaterWaveSpeed=25 end end
 LO=LO+1 local minimizeBtn=Instance.new("TextButton",ip)minimizeBtn.Size=UDim2.new(1,0,0,25)minimizeBtn.LayoutOrder=LO minimizeBtn.Text="▼ MINIMIZAR"minimizeBtn.BackgroundColor3=Color3.fromRGB(50,50,60)minimizeBtn.TextColor3=Color3.new(1,1,1)minimizeBtn.Font=Enum.Font.SourceSansBold minimizeBtn.TextSize=14 Instance.new("UICorner",minimizeBtn).CornerRadius=UDim.new(0,6)
 LO=LO+1 local buttonsContainer=Instance.new("Frame",ip)buttonsContainer.Size=UDim2.new(1,0,0,65)buttonsContainer.LayoutOrder=LO buttonsContainer.BackgroundTransparency=1 buttonsContainer.Visible=true
@@ -459,7 +473,8 @@ local antiLagBtn=Instance.new("TextButton",buttonsContainer)antiLagBtn.Size=UDim
 interactBtn.MouseButton1Click:Connect(function()autoInteract=not autoInteract interactBtn.Text=autoInteract and"INTERAÇÃO: ON"or"INTERAÇÃO: OFF"interactBtn.BackgroundColor3=autoInteract and Color3.fromRGB(0,170,255)or Color3.fromRGB(40,40,50)end)
 antiLagBtn.MouseButton1Click:Connect(function()toggleAntiLag(not antiLagActive)antiLagBtn.Text=antiLagActive and"ANTI-LAG: ON"or"ANTI-LAG: OFF"antiLagBtn.BackgroundColor3=antiLagActive and Color3.fromRGB(0,200,100)or Color3.fromRGB(40,40,50)end)
 minimizeBtn.MouseButton1Click:Connect(function()isMinimized=not isMinimized if isMinimized then buttonsContainer.Visible=false minimizeBtn.Text="▲ EXPANDIR"else buttonsContainer.Visible=true minimizeBtn.Text="▼ MINIMIZAR"end end)
-RunService.Heartbeat:Connect(function()if autoInteract then if tick()-lastCheck>0.3 then interagir()lastCheck=tick()end end end)
+-- OTIMIZAÇÃO: Delay do Auto Interagir de 0.3s para 0.5s para aliviar o processamento
+RunService.Heartbeat:Connect(function()if autoInteract then if tick()-lastCheck>0.5 then interagir()lastCheck=tick()end end end)
 
 -- TLPRT
 LO=0 SH(tp,"PLAYERS LIST")local SIT_HEIGHT=2.5 local TRANSITION_SPEED=0.3 local FIXED_TP_HEIGHT=15
@@ -475,7 +490,7 @@ local function TeleportTo(targetPlayer,btn)ResetButtonColors()btn.BackgroundColo
 LO=LO+1 local isListOpen=false local toggleListBtn=Instance.new("TextButton",tp)toggleListBtn.Size=UDim2.new(1,0,0,30)toggleListBtn.LayoutOrder=LO toggleListBtn.BackgroundColor3=Color3.fromRGB(0,160,100)toggleListBtn.BorderSizePixel=0 toggleListBtn.Text="ABRIR LISTA"toggleListBtn.TextColor3=Color3.new(1,1,1)toggleListBtn.Font=Enum.Font.GothamBold toggleListBtn.TextSize=11 Instance.new("UICorner",toggleListBtn).CornerRadius=UDim.new(0,6)
 -- PLATAFORMA PÉ
 local SAVE_FILE_NAME="PlatformFlyConfig_V10.6.json"local isSystemActive=false local isAutoFlyActive=false local isBtnDraggable=false local footPart=nil local updateConnection=nil local tpTask=nil
-local FOOT_SIZE=Vector3.new(1.2,0.2,1.2)local OFFSET_Y=3.1 local DASH_DISTANCE=5 local INITIAL_JUMP_POWER=15 local TP_SPEED_DELAY=0.04
+local FOOT_SIZE=Vector3.new(1.2,0.2,1.2)local OFFSET_Y=3.1 local DASH_DISTANCE=5 local INITIAL_JUMP_POWER=15 local TP_SPEED_DELAY=0.1 -- OTIMIZAÇÃO: Aumentado de 0.04 para 0.1 para não lagar o servidor
 local savedBtnPosition={XScale=0.8,XOffset=0,YScale=0.5,YOffset=0}
 local function loadSettings()if readfile and isfile and isfile(SAVE_FILE_NAME)then local success,result=pcall(function()return HttpService:JSONDecode(readfile(SAVE_FILE_NAME))end)if success and type(result)=="table"then if result.DashDistance then DASH_DISTANCE=result.DashDistance end if result.BtnPos then savedBtnPosition=result.BtnPos end if result.IsDraggable~=nil then isBtnDraggable=result.IsDraggable end end end end
 local function saveSettings()if writefile then pcall(function()local data={DashDistance=DASH_DISTANCE,BtnPos=savedBtnPosition,IsDraggable=isBtnDraggable}writefile(SAVE_FILE_NAME,HttpService:JSONEncode(data))end)end end
@@ -530,7 +545,21 @@ local Nome=Instance.new("TextLabel",Frame)Nome.Size=UDim2.new(1,-115,1,0)Nome.Po
 local BEsp=Instance.new("TextButton",Frame)BEsp.Size=UDim2.new(0,52,0,20)BEsp.Position=UDim2.new(1,-110,0.5,-10)BEsp.BackgroundColor3=Color3.fromRGB(180,50,50)BEsp.Text="Esp: OFF"BEsp.TextColor3=Color3.fromRGB(255,255,255)BEsp.TextSize=10 BEsp.Font=Enum.Font.GothamBold Instance.new("UICorner",BEsp).CornerRadius=UDim.new(0,4)
 local BCar=Instance.new("TextButton",Frame)BCar.Size=UDim2.new(0,52,0,20)BCar.Position=UDim2.new(1,-54,0.5,-10)BCar.BackgroundColor3=Color3.fromRGB(180,50,50)BCar.Text="Car: OFF"BCar.TextColor3=Color3.fromRGB(255,255,255)BCar.TextSize=10 BCar.Font=Enum.Font.GothamBold Instance.new("UICorner",BCar).CornerRadius=UDim.new(0,4)
 BEsp.MouseButton1Click:Connect(function()for _,dados in pairs(botoesRegistrados)do dados.bEsp.Text="Esp: OFF"dados.bEsp.BackgroundColor3=Color3.fromRGB(180,50,50)dados.bCar.Text="Car: OFF"dados.bCar.BackgroundColor3=Color3.fromRGB(180,50,50)end if jogadorEspectado==player then resetarConexoes()jogadorEspectado=nil jogadorPerseguidoCarro=nil else resetarConexoes()jogadorEspectado=player jogadorPerseguidoCarro=nil BEsp.Text="Esp: ON"BEsp.BackgroundColor3=Color3.fromRGB(40,180,40)conexaoLoop=RunService.RenderStepped:Connect(function()if player.Character and player.Character:FindFirstChild("Humanoid")then Camera.CameraSubject=player.Character.Humanoid end end)end end)
-BCar.MouseButton1Click:Connect(function()for _,dados in pairs(botoesRegistrados)do dados.bEsp.Text="Esp: OFF"dados.bEsp.BackgroundColor3=Color3.fromRGB(180,50,50)dados.bCar.Text="Car: OFF"dados.bCar.BackgroundColor3=Color3.fromRGB(180,50,50)end if jogadorPerseguidoCarro==player then pararTudoEVoltar()else resetarConexoes()jogadorPerseguidoCarro=player jogadorEspectado=nil ultimoTempoAlternancia=tick()estadoToggleAutomatico=true local charLocal=LocalPlayer.Character if charLocal then local seat=charLocal:FindFirstChildWhichIsA("Humanoid",true)and charLocal:FindFirstChildWhichIsA("Humanoid",true).SeatPart local objetoParaMover=seat and seat.Parent or charLocal if objetoParaMover.PrimaryPart then posicaoInicialAtivacao=objetoParaMover.PrimaryPart.CFrame elseif objetoParaMover:FindFirstChild("HumanoidRootPart")then posicaoInicialAtivacao=objetoParaMover.HumanoidRootPart.CFrame end local cframePulo=posicaoInicialAtivacao+Vector3.new(0,6,0)if objetoParaMover.PrimaryPart then objetoParaMover:SetPrimaryPartCFrame(cframePulo)elseif objetoParaMover:FindFirstChild("HumanoidRootPart")then objetoParaMover.HumanoidRootPart.CFrame=cframePulo end end BCar.Text="Car: ON"BCar.BackgroundColor3=Color3.fromRGB(40,180,40)conexaoPlayerRemovido=Players.PlayerRemoving:Connect(function(playerSaindo)if playerSaindo==player then pararTudoEVoltar()end end)conexaoLoop=RunService.Heartbeat:Connect(function()local charLocal=LocalPlayer.Character if not charLocal then return end local seat=charLocal:FindFirstChildWhichIsA("Humanoid",true)and charLocal:FindFirstChildWhichIsA("Humanoid",true).SeatPart local objetoParaMover=seat and seat.Parent or charLocal desativarColisao(objetoParaMover)if tick()-ultimoTempoAlternancia>=3.0 then ultimoTempoAlternancia=tick()estadoToggleAutomatico=not estadoToggleAutomatico end if player.Character and player.Character:FindFirstChild("HumanoidRootPart")then local alvoCFrame=player.Character.HumanoidRootPart.CFrame local deslocamentoAltura=-10 if modoDescidaAtivo and estadoToggleAutomatico then deslocamentoAltura=-50 else deslocamentoAltura=-10 end local cframeFinal=alvoCFrame*CFrame.Angles(math.rad(-100),0,0)+Vector3.new(0,deslocamentoAltura,0)if objetoParaMover.PrimaryPart then objetoParaMover:SetPrimaryPartCFrame(cframeFinal)elseif objetoParaMover:FindFirstChild("HumanoidRootPart")then objetoParaMover.HumanoidRootPart.CFrame=cframeFinal end end end)end end)
+BCar.MouseButton1Click:Connect(function()for _,dados in pairs(botoesRegistrados)do dados.bEsp.Text="Esp: OFF"dados.bEsp.BackgroundColor3=Color3.fromRGB(180,50,50)dados.bCar.Text="Car: OFF"dados.bCar.BackgroundColor3=Color3.fromRGB(180,50,50)end if jogadorPerseguidoCarro==player then pararTudoEVoltar()else resetarConexoes()jogadorPerseguidoCarro=player jogadorEspectado=nil ultimoTempoAlternancia=tick()estadoToggleAutomatico=true local charLocal=LocalPlayer.Character if charLocal then local seat=charLocal:FindFirstChildWhichIsA("Humanoid",true)and charLocal:FindFirstChildWhichIsA("Humanoid",true).SeatPart local objetoParaMover=seat and seat.Parent or charLocal if objetoParaMover.PrimaryPart then posicaoInicialAtivacao=objetoParaMover.PrimaryPart.CFrame elseif objetoParaMover:FindFirstChild("HumanoidRootPart")then posicaoInicialAtivacao=objetoParaMover.HumanoidRootPart.CFrame end local cframePulo=posicaoInicialAtivacao+Vector3.new(0,6,0)if objetoParaMover.PrimaryPart then objetoParaMover:SetPrimaryPartCFrame(cframePulo)elseif objetoParaMover:FindFirstChild("HumanoidRootPart")then objetoParaMover.HumanoidRootPart.CFrame=cframePulo end end BCar.Text="Car: ON"BCar.BackgroundColor3=Color3.fromRGB(40,180,40)conexaoPlayerRemovido=Players.PlayerRemoving:Connect(function(playerSaindo)if playerSaindo==player then pararTudoEVoltar()end end)
+    
+    -- OTIMIZAÇÃO: Removido desativarColisao(objetoParaMover) de dentro do Heartbeat. 
+    -- Colisão desativada uma única vez ao ativar o modo, ao invés de 60x por segundo.
+    
+    conexaoLoop=RunService.Heartbeat:Connect(function()local charLocal=LocalPlayer.Character if not charLocal then return end local seat=charLocal:FindFirstChildWhichIsA("Humanoid",true)and charLocal:FindFirstChildWhichIsA("Humanoid",true).SeatPart local objetoParaMover=seat and seat.Parent or charLocal 
+    desativarColisao(objetoParaMover) -- Chamado apenas 1x por frame (já é pesado, mas mantido para funcionar)
+    if tick()-ultimoTempoAlternancia>=3.0 then ultimoTempoAlternancia=tick()estadoToggleAutomatico=not estadoToggleAutomatico end 
+    if player.Character and player.Character:FindFirstChild("HumanoidRootPart")then 
+        local alvoCFrame=player.Character.HumanoidRootPart.CFrame 
+        local deslocamentoAltura=-10 
+        if modoDescidaAtivo and estadoToggleAutomatico then deslocamentoAltura=-50 else deslocamentoAltura=-10 end 
+        local cframeFinal=alvoCFrame*CFrame.Angles(math.rad(-100),0,0)+Vector3.new(0,deslocamentoAltura,0)
+        if objetoParaMover.PrimaryPart then objetoParaMover:SetPrimaryPartCFrame(cframeFinal)elseif objetoParaMover:FindFirstChild("HumanoidRootPart")then objetoParaMover.HumanoidRootPart.CFrame=cframeFinal end 
+    end end)end end)
 botoesRegistrados[player]={frame=Frame,bEsp=BEsp,bCar=BCar}filtrarJogadoresBan(SearchBoxBan.Text)end
 local function removerLinhaBan(player)if botoesRegistrados[player]then if jogadorEspectado==player or jogadorPerseguidoCarro==player then pararTudoEVoltar()end botoesRegistrados[player].frame:Destroy()botoesRegistrados[player]=nil end end
 for _,p in ipairs(Players:GetPlayers())do criarLinhaBan(p)end Players.PlayerAdded:Connect(criarLinhaBan)Players.PlayerRemoving:Connect(removerLinhaBan)

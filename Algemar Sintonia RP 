@@ -1,0 +1,293 @@
+-- SCRIPT INDEPENDENTE: ATALHOS DE ALGEMAR, DEITAR E AUTO ALGEMAR
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local HUI = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Remove a interface antiga se você executar duas vezes
+if HUI:FindFirstChild("StandaloneAtalhos") then
+    HUI.StandaloneAtalhos:Destroy()
+end
+
+-- Cria a Tela
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "StandaloneAtalhos"
+Gui.ResetOnSpawn = false
+Gui.IgnoreGuiInset = true
+Gui.Parent = HUI
+
+-- Painel de Controle (Aumentei a altura para caber o novo botão)
+local Painel = Instance.new("Frame")
+Painel.Name = "PainelAtalhos"
+Painel.Size = UDim2.new(0, 180, 0, 180) 
+Painel.Position = UDim2.new(0.5, -90, 0.5, -90)
+Painel.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+Painel.BorderSizePixel = 0
+Painel.Active = true
+Painel.Draggable = true
+Painel.ClipsDescendants = true
+Painel.Parent = Gui
+Instance.new("UICorner", Painel).CornerRadius = UDim.new(0, 8)
+
+local Titulo = Instance.new("TextLabel")
+Titulo.Size = UDim2.new(1, -30, 0, 24)
+Titulo.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
+Titulo.Text = " ATALHOS RÁPIDOS"
+Titulo.TextColor3 = Color3.new(1, 1, 1)
+Titulo.Font = Enum.Font.GothamBold
+Titulo.TextSize = 11
+Titulo.TextXAlignment = Enum.TextXAlignment.Left
+Titulo.Parent = Painel
+Instance.new("UICorner", Titulo).CornerRadius = UDim.new(0, 8)
+
+-- Botão de Minimizar
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Size = UDim2.new(0, 24, 0, 24)
+MinimizeBtn.Position = UDim2.new(1, -24, 0, 0)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+MinimizeBtn.Text = "-"
+MinimizeBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+MinimizeBtn.Font = Enum.Font.GothamBold
+MinimizeBtn.TextSize = 14
+MinimizeBtn.ZIndex = 2
+MinimizeBtn.Parent = Painel
+Instance.new("UICorner", MinimizeBtn).CornerRadius = UDim.new(0, 6)
+
+-- ================== SEÇÃO ALGEMAR ==================
+local btnToggle = Instance.new("TextButton")
+btnToggle.Size = UDim2.new(1, -10, 0, 22)
+btnToggle.Position = UDim2.new(0, 5, 0, 28)
+btnToggle.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+btnToggle.Text = "ALGEMA: OFF ❌"
+btnToggle.TextColor3 = Color3.new(1, 1, 1)
+btnToggle.Font = Enum.Font.GothamBold
+btnToggle.TextSize = 10
+btnToggle.Parent = Painel
+Instance.new("UICorner", btnToggle).CornerRadius = UDim.new(0, 4)
+
+local btnTrava = Instance.new("TextButton")
+btnTrava.Size = UDim2.new(1, -10, 0, 22)
+btnTrava.Position = UDim2.new(0, 5, 0, 52)
+btnTrava.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+btnTrava.Text = "TRAVAR ALGEMA: OFF 🔓"
+btnTrava.TextColor3 = Color3.new(1, 1, 1)
+btnTrava.Font = Enum.Font.GothamBold
+btnTrava.TextSize = 10
+btnTrava.Parent = Painel
+Instance.new("UICorner", btnTrava).CornerRadius = UDim.new(0, 4)
+
+-- NOVO BOTÃO: AUTO ALGEMAR
+local btnAutoAlgemar = Instance.new("TextButton")
+btnAutoAlgemar.Size = UDim2.new(1, -10, 0, 22)
+btnAutoAlgemar.Position = UDim2.new(0, 5, 0, 76)
+btnAutoAlgemar.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+btnAutoAlgemar.Text = "AUTO ALGEMAR: OFF ❌"
+btnAutoAlgemar.TextColor3 = Color3.new(1, 1, 1)
+btnAutoAlgemar.Font = Enum.Font.GothamBold
+btnAutoAlgemar.TextSize = 10
+btnAutoAlgemar.Parent = Painel
+Instance.new("UICorner", btnAutoAlgemar).CornerRadius = UDim.new(0, 4)
+
+-- ================== SEÇÃO DEITAR ==================
+local btnDeitarToggle = Instance.new("TextButton")
+btnDeitarToggle.Size = UDim2.new(1, -10, 0, 22)
+btnDeitarToggle.Position = UDim2.new(0, 5, 0, 104)
+btnDeitarToggle.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+btnDeitarToggle.Text = "DEITAR: OFF ❌"
+btnDeitarToggle.TextColor3 = Color3.new(1, 1, 1)
+btnDeitarToggle.Font = Enum.Font.GothamBold
+btnDeitarToggle.TextSize = 10
+btnDeitarToggle.Parent = Painel
+Instance.new("UICorner", btnDeitarToggle).CornerRadius = UDim.new(0, 4)
+
+local btnDeitarTrava = Instance.new("TextButton")
+btnDeitarTrava.Size = UDim2.new(1, -10, 0, 22)
+btnDeitarTrava.Position = UDim2.new(0, 5, 0, 128)
+btnDeitarTrava.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+btnDeitarTrava.Text = "TRAVAR DEITAR: OFF 🔓"
+btnDeitarTrava.TextColor3 = Color3.new(1, 1, 1)
+btnDeitarTrava.Font = Enum.Font.GothamBold
+btnDeitarTrava.TextSize = 10
+btnDeitarTrava.Parent = Painel
+Instance.new("UICorner", btnDeitarTrava).CornerRadius = UDim.new(0, 4)
+
+-- ================== BOTÕES FLUTUANTES ==================
+local btnRosa = Instance.new("TextButton")
+btnRosa.Name = "BtnRosaAlgema"
+btnRosa.Size = UDim2.new(0, 45, 0, 45)
+btnRosa.Position = UDim2.new(0.5, -50, 0.7, 0)
+btnRosa.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
+btnRosa.Text = "🔗"
+btnRosa.TextSize = 18
+btnRosa.Visible = false
+btnRosa.Active = true
+btnRosa.Draggable = false
+btnRosa.ZIndex = 150
+btnRosa.Parent = Gui
+Instance.new("UICorner", btnRosa).CornerRadius = UDim.new(1, 0)
+
+local btnDeitarFlutuante = Instance.new("TextButton")
+btnDeitarFlutuante.Name = "BtnDeitarFlutuante"
+btnDeitarFlutuante.Size = UDim2.new(0, 45, 0, 45)
+btnDeitarFlutuante.Position = UDim2.new(0.5, 5, 0.7, 0)
+btnDeitarFlutuante.BackgroundColor3 = Color3.fromRGB(138, 43, 226)
+btnDeitarFlutuante.Text = "🛌"
+btnDeitarFlutuante.TextSize = 18
+btnDeitarFlutuante.Visible = false
+btnDeitarFlutuante.Active = true
+btnDeitarFlutuante.Draggable = false
+btnDeitarFlutuante.ZIndex = 150
+btnDeitarFlutuante.Parent = Gui
+Instance.new("UICorner", btnDeitarFlutuante).CornerRadius = UDim.new(1, 0)
+
+-- ================== FUNÇÕES DE EXECUÇÃO ==================
+-- Função base para puxar a algema (usada tanto no botão manual quanto no automático)
+local function executarAlgemar()
+    pcall(function()
+        local currentGui = LocalPlayer:WaitForChild("PlayerGui")
+        local executed = false
+        for _, gui in ipairs(currentGui:GetChildren()) do
+            if gui:IsA("ScreenGui") then
+                local btn = gui:FindFirstChild("Algemar", true) or gui:FindFirstChild("Cuff", true)
+                if btn and btn:IsA("GuiButton") then
+                    if typeof(getconnections) == "function" then
+                        for _, c in ipairs(getconnections(btn.MouseButton1Click)) do c:Fire() executed = true end
+                        for _, c in ipairs(getconnections(btn.Activated)) do c:Fire() executed = true end
+                    end
+                    if not executed and firesignal then firesignal(btn.MouseButton1Click) executed = true end
+                end
+            end
+        end
+        if not executed then
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("ProximityPrompt") and (obj.ActionText:lower():find("algemar") or obj.ObjectText:lower():find("algemar")) then
+                        if (hrp.Position - obj.Parent.Position).Magnitude <= 15 then
+                            fireproximityprompt(obj) executed = true
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+local function executarDeitar()
+    pcall(function()
+        local currentGui = LocalPlayer:WaitForChild("PlayerGui")
+        local executed = false
+        for _, gui in ipairs(currentGui:GetChildren()) do
+            if gui:IsA("ScreenGui") then
+                local btn = gui:FindFirstChild("Deitar", true) or gui:FindFirstChild("Sleep", true) or gui:FindFirstChild("Deit", true)
+                if btn and btn:IsA("GuiButton") then
+                    if typeof(getconnections) == "function" then
+                        for _, c in ipairs(getconnections(btn.MouseButton1Click)) do c:Fire() executed = true end
+                        for _, c in ipairs(getconnections(btn.Activated)) do c:Fire() executed = true end
+                    end
+                    if not executed and firesignal then firesignal(btn.MouseButton1Click) executed = true end
+                end
+            end
+        end
+        if not executed then
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("ProximityPrompt") and (obj.ActionText:lower():find("deitar") or obj.ObjectText:lower():find("deitar") or obj.ActionText:lower():find("sleep")) then
+                        if (hrp.Position - obj.Parent.Position).Magnitude <= 15 then
+                            fireproximityprompt(obj) executed = true
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- ================== LÓGICA DE MINIMIZAR ==================
+local isMinimized = false
+MinimizeBtn.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    if isMinimized then
+        Painel.Size = UDim2.new(0, 30, 0, 30)
+        Painel.Draggable = false
+        MinimizeBtn.Size = UDim2.new(1, 0, 1, 0)
+        MinimizeBtn.Position = UDim2.new(0, 0, 0, 0)
+        MinimizeBtn.Text = "+"
+        Titulo.Visible = false
+        btnToggle.Visible = false
+        btnTrava.Visible = false
+        btnAutoAlgemar.Visible = false
+        btnDeitarToggle.Visible = false
+        btnDeitarTrava.Visible = false
+    else
+        Painel.Size = UDim2.new(0, 180, 0, 180)
+        Painel.Draggable = true
+        MinimizeBtn.Size = UDim2.new(0, 24, 0, 24)
+        MinimizeBtn.Position = UDim2.new(1, -24, 0, 0)
+        MinimizeBtn.Text = "-"
+        Titulo.Visible = true
+        btnToggle.Visible = true
+        btnTrava.Visible = true
+        btnAutoAlgemar.Visible = true
+        btnDeitarToggle.Visible = true
+        btnDeitarTrava.Visible = true
+    end
+end)
+
+-- ================== LÓGICA DOS BOTÕES ==================
+-- Algemar Manual
+local ligado = false
+local travado = false
+btnToggle.MouseButton1Click:Connect(function()
+    ligado = not ligado
+    btnRosa.Visible = ligado
+    btnToggle.Text = ligado and "ALGEMA: ON ✔️" or "ALGEMA: OFF ❌"
+    btnToggle.BackgroundColor3 = ligado and Color3.fromRGB(40, 167, 69) or Color3.fromRGB(200, 50, 50)
+end)
+btnTrava.MouseButton1Click:Connect(function()
+    travado = not travado
+    btnRosa.Draggable = not travado
+    btnTrava.Text = travado and "TRAVAR ALGEMA: ON 🔒" or "TRAVAR ALGEMA: OFF 🔓"
+    btnTrava.BackgroundColor3 = travado and Color3.fromRGB(217, 130, 43) or Color3.fromRGB(70, 70, 70)
+end)
+btnRosa.MouseButton1Click:Connect(executarAlgemar)
+
+-- AUTO ALGEMAR (Loop)
+local autoAlgemarLigado = false
+btnAutoAlgemar.MouseButton1Click:Connect(function()
+    autoAlgemarLigado = not autoAlgemarLigado
+    if autoAlgemarLigado then
+        btnAutoAlgemar.Text = "AUTO ALGEMAR: ON 🔁"
+        btnAutoAlgemar.BackgroundColor3 = Color3.fromRGB(0, 160, 100)
+        -- Inicia o loop em segundo plano
+        task.spawn(function()
+            while autoAlgemarLigado do
+                executarAlgemar()
+                task.wait(0.15) -- Delay para não travar o celular
+            end
+        end)
+    else
+        btnAutoAlgemar.Text = "AUTO ALGEMAR: OFF ❌"
+        btnAutoAlgemar.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        -- O loop vai parar sozinho na próxima checagem do "while"
+    end
+end)
+
+-- Deitar
+local deitarLigado = false
+local deitarTravado = false
+btnDeitarToggle.MouseButton1Click:Connect(function()
+    deitarLigado = not deitarLigado
+    btnDeitarFlutuante.Visible = deitarLigado
+    btnDeitarToggle.Text = deitarLigado and "DEITAR: ON ✔️" or "DEITAR: OFF ❌"
+    btnDeitarToggle.BackgroundColor3 = deitarLigado and Color3.fromRGB(40, 167, 69) or Color3.fromRGB(200, 50, 50)
+end)
+btnDeitarTrava.MouseButton1Click:Connect(function()
+    deitarTravado = not deitarTravado
+    btnDeitarFlutuante.Draggable = not deitarTravado
+    btnDeitarTrava.Text = deitarTravado and "TRAVAR DEITAR: ON 🔒" or "TRAVAR DEITAR: OFF 🔓"
+    btnDeitarTrava.BackgroundColor3 = deitarTravado and Color3.fromRGB(217, 130, 43) or Color3.fromRGB(70, 70, 70)
+end)
+btnDeitarFlutuante.MouseButton1Click:Connect(executarDeitar)

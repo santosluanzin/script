@@ -1,0 +1,874 @@
+-- ============================================
+--  ACCELERATION UI - RESET DE TOQUE + SAVE DE TAMANHO E POSIÇÃO
+-- ============================================
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local StarterGui = game:GetService("StarterGui")
+
+local player = Players.LocalPlayer
+
+local CONFIG_FILE = "AccelUI_Config_v5.json"
+local savedData = {}
+pcall(function()
+	if isfile and isfile(CONFIG_FILE) then
+		savedData = HttpService:JSONDecode(readfile(CONFIG_FILE))
+	end
+end)
+
+local saveAll -- forward decl
+
+-- ======== VARIÁVEIS ========
+local accelOn = savedData.accelOn == nil and true or savedData.accelOn
+local lockedAccel = savedData.lockedAccel == true
+
+local currentSpeed = 0
+local targetSpeed = 0
+local isAccelerating = false
+local isBraking = false
+local accelLoop = nil
+local brakeLoop = nil
+
+local launchIncrement = savedData.launchIncrement or 5
+local maxSpeedLimit = savedData.maxSpeedLimit or 100
+local brakeAmount = savedData.brakeAmount or 5
+local brakeSpeed = savedData.brakeSpeed or 0.1
+local stepTime = 0.15
+
+local accelBtnSize = savedData.accelBtnSize or 70
+local savedAccelPosX = savedData.accelBtnPosXOff or 100
+local savedAccelPosY = savedData.accelBtnPosYOff or 100
+
+local jumpVisible = savedData.jumpVisible == true
+local jumpPosLocked = savedData.jumpPosLocked == true
+local autoJumpOn = savedData.autoJumpOn == true
+
+local wheelieVisible = savedData.wheelieVisible == true
+local wheeliePosLocked = savedData.wheeliePosLocked == true
+
+local brakeRatePerSec = savedData.brakeRatePerSec or (brakeAmount / brakeSpeed)
+local robloxOriginalOn = savedData.robloxOriginalOn == true
+
+-- ======== LIMPA GUIS ANTIGAS ========
+local oldGui = player.PlayerGui:FindFirstChild("AccelerationUI")
+if oldGui then oldGui:Destroy() end
+local oldGui2 = player.PlayerGui:FindFirstChild("CombatHackUI")
+if oldGui2 then oldGui2:Destroy() end
+
+-- ======== GUI ========
+local gui = Instance.new("ScreenGui")
+gui.Name = "AccelerationUI"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.DisplayOrder = 999999
+gui.Parent = player:WaitForChild("PlayerGui")
+
+local function makeButton(parent, name, text, color, size)
+	local b = Instance.new("TextButton")
+	b.Name = name
+	b.Text = text
+	b.BackgroundColor3 = color
+	b.TextColor3 = Color3.new(1,1,1)
+	b.TextScaled = true
+	b.Font = Enum.Font.GothamBold
+	b.BorderSizePixel = 0
+	b.Size = size
+	b.AutoButtonColor = true
+	b.ZIndex = 10
+	b.Parent = parent
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0.15, 0)
+	corner.Parent = b
+	return b
+end
+
+-- ======== MENU (SCROLLÁVEL) ========
+local menu = Instance.new("ScrollingFrame")
+menu.Name = "Menu"
+menu.Size = UDim2.fromOffset(200, 420)
+menu.Position = UDim2.fromScale(0.05, 0.10)
+menu.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+menu.BorderSizePixel = 0
+menu.ZIndex = 5
+menu.CanvasSize = UDim2.new(0, 0, 0, 950)
+menu.ScrollBarThickness = 6
+menu.Parent = gui
+
+local menuCorner = Instance.new("UICorner")
+menuCorner.CornerRadius = UDim.new(0.05, 0)
+menuCorner.Parent = menu
+
+local layout = Instance.new("UIListLayout")
+layout.FillDirection = Enum.FillDirection.Vertical
+layout.Padding = UDim.new(0, 6)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+layout.Parent = menu
+
+local padding = Instance.new("UIPadding")
+padding.PaddingTop = UDim.new(0, 8)
+padding.PaddingLeft = UDim.new(0, 8)
+padding.PaddingRight = UDim.new(0, 8)
+padding.Parent = menu
+
+local minimizeBtn = makeButton(menu, "MinimizeButton", "➖", Color3.fromRGB(80, 80, 90), UDim2.new(1, 0, 0, 30))
+minimizeBtn.LayoutOrder = 1
+
+local onOffBtn = makeButton(menu, "OnOffButton", accelOn and "ON" or "OFF", accelOn and Color3.fromRGB(0,170,0) or Color3.fromRGB(170,0,0), UDim2.new(1, 0, 0, 35))
+onOffBtn.LayoutOrder = 2
+
+local lockBtn = makeButton(menu, "LockButton", lockedAccel and "🔒 Acel. Travado" or "🔓 Acel. Livre", lockedAccel and Color3.fromRGB(200,50,50) or Color3.fromRGB(50,120,200), UDim2.new(1, 0, 0, 35))
+lockBtn.LayoutOrder = 3
+
+local launchInput = Instance.new("TextBox")
+launchInput.Name = "LaunchInput"
+launchInput.Text = tostring(launchIncrement)
+launchInput.Size = UDim2.new(1, 0, 0, 28)
+launchInput.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+launchInput.TextColor3 = Color3.new(1,1,1)
+launchInput.TextScaled = true
+launchInput.Font = Enum.Font.Gotham
+launchInput.BorderSizePixel = 0
+launchInput.LayoutOrder = 4
+launchInput.Parent = menu
+local c2 = Instance.new("UICorner"); c2.CornerRadius = UDim.new(0.15, 0); c2.Parent = launchInput
+
+local maxSpeedInput = Instance.new("TextBox")
+maxSpeedInput.Name = "MaxSpeedInput"
+maxSpeedInput.Text = tostring(maxSpeedLimit)
+maxSpeedInput.Size = UDim2.new(1, 0, 0, 28)
+maxSpeedInput.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+maxSpeedInput.TextColor3 = Color3.new(1,1,1)
+maxSpeedInput.TextScaled = true
+maxSpeedInput.Font = Enum.Font.Gotham
+maxSpeedInput.BorderSizePixel = 0
+maxSpeedInput.LayoutOrder = 5
+maxSpeedInput.Parent = menu
+local cMS = Instance.new("UICorner"); cMS.CornerRadius = UDim.new(0.15, 0); cMS.Parent = maxSpeedInput
+
+local brakeInput = Instance.new("TextBox")
+brakeInput.Name = "BrakeInput"
+brakeInput.Text = tostring(brakeAmount)
+brakeInput.Size = UDim2.new(1, 0, 0, 28)
+brakeInput.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+brakeInput.TextColor3 = Color3.new(1,1,1)
+brakeInput.TextScaled = true
+brakeInput.Font = Enum.Font.Gotham
+brakeInput.BorderSizePixel = 0
+brakeInput.LayoutOrder = 6
+brakeInput.Parent = menu
+local c3 = Instance.new("UICorner"); c3.CornerRadius = UDim.new(0.15, 0); c3.Parent = brakeInput
+
+local brakeTimeInput = Instance.new("TextBox")
+brakeTimeInput.Name = "BrakeTimeInput"
+brakeTimeInput.Text = tostring(brakeSpeed)
+brakeTimeInput.Size = UDim2.new(1, 0, 0, 28)
+brakeTimeInput.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+brakeTimeInput.TextColor3 = Color3.new(1,1,1)
+brakeTimeInput.TextScaled = true
+brakeTimeInput.Font = Enum.Font.Gotham
+brakeTimeInput.BorderSizePixel = 0
+brakeTimeInput.LayoutOrder = 7
+brakeTimeInput.Parent = menu
+local c4 = Instance.new("UICorner"); c4.CornerRadius = UDim.new(0.15, 0); c4.Parent = brakeTimeInput
+
+local sizeInput = Instance.new("TextBox")
+sizeInput.Name = "SizeInput"
+sizeInput.Text = tostring(accelBtnSize)
+sizeInput.Size = UDim2.new(1, 0, 0, 28)
+sizeInput.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+sizeInput.TextColor3 = Color3.new(1,1,1)
+sizeInput.TextScaled = true
+sizeInput.Font = Enum.Font.Gotham
+sizeInput.BorderSizePixel = 0
+sizeInput.LayoutOrder = 8
+sizeInput.Parent = menu
+local c6 = Instance.new("UICorner"); c6.CornerRadius = UDim.new(0.15, 0); c6.Parent = sizeInput
+
+local brakeRateInput = Instance.new("TextBox")
+brakeRateInput.Name = "BrakeRateInput"
+brakeRateInput.Text = tostring(math.floor(brakeRatePerSec))
+brakeRateInput.Size = UDim2.new(1, 0, 0, 28)
+brakeRateInput.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+brakeRateInput.TextColor3 = Color3.new(1,1,1)
+brakeRateInput.TextScaled = true
+brakeRateInput.Font = Enum.Font.Gotham
+brakeRateInput.BorderSizePixel = 0
+brakeRateInput.LayoutOrder = 9
+brakeRateInput.Parent = menu
+local c7 = Instance.new("UICorner"); c7.CornerRadius = UDim.new(0.15, 0); c7.Parent = brakeRateInput
+
+local jumpToggleBtn = makeButton(menu, "JumpToggleBtn",
+	jumpVisible and "⬆️ Pulo: ON" or "⬆️ Pulo: OFF",
+	jumpVisible and Color3.fromRGB(0,170,0) or Color3.fromRGB(170,0,0),
+	UDim2.new(1, 0, 0, 35))
+jumpToggleBtn.LayoutOrder = 10
+
+local jumpLockPosBtn = makeButton(menu, "JumpLockPosBtn",
+	jumpPosLocked and "🔒 Pulo Travado" or "🔓 Pulo Livre",
+	jumpPosLocked and Color3.fromRGB(200,50,50) or Color3.fromRGB(50,120,200),
+	UDim2.new(1, 0, 0, 35))
+jumpLockPosBtn.LayoutOrder = 11
+
+local wheelieToggleBtn = makeButton(menu, "WheelieToggleBtn",
+	wheelieVisible and "🏍️ Grau: ON" or "🏍️ Grau: OFF",
+	wheelieVisible and Color3.fromRGB(0,170,0) or Color3.fromRGB(170,0,0),
+	UDim2.new(1, 0, 0, 35))
+wheelieToggleBtn.LayoutOrder = 12
+
+local wheelieLockPosBtn = makeButton(menu, "WheelieLockPosBtn",
+	wheeliePosLocked and "🔒 Grau Travado" or "🔓 Grau Livre",
+	wheeliePosLocked and Color3.fromRGB(200,50,50) or Color3.fromRGB(50,120,200),
+	UDim2.new(1, 0, 0, 35))
+wheelieLockPosBtn.LayoutOrder = 13
+
+local robloxUIButton = makeButton(menu, "RobloxUIButton",
+	robloxOriginalOn and "🎮 Roblox: ON" or "🎮 Roblox: OFF",
+	robloxOriginalOn and Color3.fromRGB(0,170,0) or Color3.fromRGB(170,0,0),
+	UDim2.new(1, 0, 0, 35))
+robloxUIButton.LayoutOrder = 14
+
+local hardResetBtn = makeButton(menu, "HardResetBtn", "⚠️ RESET TOTAL", Color3.fromRGB(220, 40, 40), UDim2.new(1, 0, 0, 35))
+hardResetBtn.LayoutOrder = 15
+
+-- ======== BOTÃO ACELERAR ========
+local accelBtn = makeButton(gui, "AccelButton", "🚗", Color3.fromRGB(200, 40, 40),
+	UDim2.fromOffset(accelBtnSize, accelBtnSize))
+accelBtn.Visible = false
+accelBtn.ZIndex = 999999
+accelBtn:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(1, 0)
+accelBtn.Position = UDim2.fromOffset(savedAccelPosX, savedAccelPosY)
+
+local stroke1 = Instance.new("UIStroke")
+stroke1.Color = Color3.new(1,1,1)
+stroke1.Thickness = 2
+stroke1.Transparency = 0.4
+stroke1.Parent = accelBtn
+
+-- ======== CONTAINER DO PULO ========
+local jumpContainer = Instance.new("Frame")
+jumpContainer.Name = "JumpContainer"
+jumpContainer.Size = UDim2.fromOffset(130, 80)
+jumpContainer.Position = UDim2.new(
+	savedData.jumpPosXScale or 1,
+	savedData.jumpPosXOff or -160,
+	savedData.jumpPosYScale or 1,
+	savedData.jumpPosYOff or -300
+)
+jumpContainer.BackgroundTransparency = 1
+jumpContainer.Visible = jumpVisible
+jumpContainer.Parent = gui
+
+local jumpBtn = Instance.new("TextButton")
+jumpBtn.Name = "CustomJumpBtn"
+jumpBtn.Size = UDim2.fromOffset(70, 70)
+jumpBtn.Position = UDim2.fromOffset(0, 0)
+jumpBtn.BackgroundColor3 = Color3.fromRGB(50, 120, 200)
+jumpBtn.Text = "⬆️"
+jumpBtn.TextColor3 = Color3.new(1,1,1)
+jumpBtn.TextScaled = true
+jumpBtn.Font = Enum.Font.GothamBold
+jumpBtn.BorderSizePixel = 0
+jumpBtn.ZIndex = 10
+jumpBtn.Parent = jumpContainer
+local jumpCorner = Instance.new("UICorner")
+jumpCorner.CornerRadius = UDim.new(1, 0)
+jumpCorner.Parent = jumpBtn
+
+local jumpLockBtn = Instance.new("TextButton")
+jumpLockBtn.Name = "LockBtn"
+jumpLockBtn.Size = UDim2.fromOffset(45, 45)
+jumpLockBtn.Position = UDim2.fromOffset(75, 15)
+jumpLockBtn.BackgroundColor3 = autoJumpOn and Color3.fromRGB(0,170,0) or Color3.fromRGB(80,80,90)
+jumpLockBtn.Text = autoJumpOn and "🔒" or "🔓"
+jumpLockBtn.TextColor3 = Color3.new(1,1,1)
+jumpLockBtn.TextScaled = true
+jumpLockBtn.Font = Enum.Font.GothamBold
+jumpLockBtn.BorderSizePixel = 0
+jumpLockBtn.ZIndex = 10
+jumpLockBtn.Parent = jumpContainer
+local lockCorner = Instance.new("UICorner")
+lockCorner.CornerRadius = UDim.new(1, 0)
+lockCorner.Parent = jumpLockBtn
+
+-- ======== BOTÃO DE GRAU ========
+local wheelieBtn = makeButton(gui, "CustomWheelieBtn", "🏍️", Color3.fromRGB(200, 120, 0),
+	UDim2.fromOffset(45, 45))
+wheelieBtn.Visible = false
+wheelieBtn.ZIndex = 999999
+wheelieBtn:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(1, 0)
+wheelieBtn.Position = UDim2.new(
+	savedData.wheeliePosXScale or 0.8,
+	savedData.wheeliePosXOff or 0,
+	savedData.wheeliePosYScale or 0.4,
+	savedData.wheeliePosYOff or 0
+)
+
+-- ======== SAVE FUNCTION ========
+saveAll = function()
+	local data = {
+		launchIncrement = launchIncrement,
+		maxSpeedLimit = maxSpeedLimit,
+		brakeAmount = brakeAmount,
+		brakeSpeed = brakeSpeed,
+		brakeRatePerSec = brakeRatePerSec,
+		accelOn = accelOn,
+		lockedAccel = lockedAccel,
+		accelBtnSize = accelBtnSize,
+		accelBtnPosXOff = accelBtn.Position.X.Offset,
+		accelBtnPosYOff = accelBtn.Position.Y.Offset,
+		jumpVisible = jumpVisible,
+		jumpPosLocked = jumpPosLocked,
+		autoJumpOn = autoJumpOn,
+		wheelieVisible = wheelieVisible,
+		wheeliePosLocked = wheeliePosLocked,
+		robloxOriginalOn = robloxOriginalOn,
+		jumpPosXScale = jumpContainer.Position.X.Scale,
+		jumpPosXOff = jumpContainer.Position.X.Offset,
+		jumpPosYScale = jumpContainer.Position.Y.Scale,
+		jumpPosYOff = jumpContainer.Position.Y.Offset,
+		wheeliePosXScale = wheelieBtn.Position.X.Scale,
+		wheeliePosXOff = wheelieBtn.Position.X.Offset,
+		wheeliePosYScale = wheelieBtn.Position.Y.Scale,
+		wheeliePosYOff = wheelieBtn.Position.Y.Offset,
+	}
+	pcall(function()
+		if writefile then
+			writefile(CONFIG_FILE, HttpService:JSONEncode(data))
+		end
+	end)
+end
+
+hardResetBtn.MouseButton1Click:Connect(function()
+	pcall(function()
+		if delfile and isfile(CONFIG_FILE) then
+			delfile(CONFIG_FILE)
+		end
+	end)
+	gui:Destroy()
+	loadstring(game:HttpGet(script and script.Source or ""))()
+end)
+
+-- ======== FÍSICA E GERENCIAMENTO DE VEÍCULO ========
+local function getSeat()
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	return hum and hum.SeatPart
+end
+
+local lastSeat = nil
+local function updatePhysics()
+	local seat = getSeat()
+	
+	if seat and seat:IsA("VehicleSeat") then
+		if accelOn then accelBtn.Visible = true end
+		if wheelieVisible then wheelieBtn.Visible = true end
+	else
+		accelBtn.Visible = false
+		wheelieBtn.Visible = false
+	end
+
+	if seat ~= lastSeat then
+		isAccelerating = false
+		isBraking = false
+		currentSpeed = 0
+		targetSpeed = 0
+		if accelLoop then task.cancel(accelLoop); accelLoop = nil end
+		if brakeLoop then task.cancel(brakeLoop); brakeLoop = nil end
+		if lastSeat and lastSeat:IsA("VehicleSeat") then
+			lastSeat.ThrottleFloat = 0
+			lastSeat.SteerFloat = 0
+		end
+		lastSeat = seat
+	end
+
+	if not seat or seat.Name ~= "DriveSeat" then return end
+
+	local chassis = seat.Parent.PrimaryPart or seat
+	if not chassis then return end
+
+	if isAccelerating or isBraking then
+		seat.ThrottleFloat = isAccelerating and 1 or 0
+		local targetVel = chassis.CFrame.LookVector * (targetSpeed * 1.5)
+		local currentVel = chassis.AssemblyLinearVelocity
+		local smoothVel = currentVel:Lerp(Vector3.new(targetVel.X, currentVel.Y, targetVel.Z), 0.2)
+		chassis.AssemblyLinearVelocity = smoothVel
+	else
+		seat.ThrottleFloat = 0
+	end
+end
+
+RunService.Heartbeat:Connect(updatePhysics)
+
+local function startAccel()
+	if brakeLoop then task.cancel(brakeLoop); brakeLoop = nil end
+	isBraking = false
+	if currentSpeed <= 0 then
+		currentSpeed = launchIncrement
+		targetSpeed = currentSpeed
+	end
+	isAccelerating = true
+	if accelLoop then task.cancel(accelLoop) end
+	accelLoop = task.spawn(function()
+		while isAccelerating and not isBraking do
+			currentSpeed = currentSpeed + launchIncrement
+			if currentSpeed > maxSpeedLimit then
+				currentSpeed = maxSpeedLimit
+			end
+			targetSpeed = currentSpeed
+			task.wait(stepTime)
+		end
+	end)
+end
+
+local function startAutoBrake()
+	isAccelerating = false
+	if accelLoop then task.cancel(accelLoop); accelLoop = nil end
+	if isBraking then return end
+	isBraking = true
+	if brakeLoop then task.cancel(brakeLoop) end
+	brakeLoop = task.spawn(function()
+		while currentSpeed > 0 do
+			currentSpeed = math.max(0, currentSpeed - brakeAmount)
+			targetSpeed = currentSpeed
+			task.wait(brakeSpeed)
+		end
+		targetSpeed = 0
+		currentSpeed = 0
+		isBraking = false
+	end)
+end
+
+-- ======== TEXTBOX HANDLERS ========
+launchInput.FocusLost:Connect(function()
+	local num = tonumber(launchInput.Text)
+	if num and num > 0 then launchIncrement = num; saveAll() end
+end)
+
+maxSpeedInput.FocusLost:Connect(function()
+	local num = tonumber(maxSpeedInput.Text)
+	if num and num > 0 then maxSpeedLimit = num; saveAll() end
+end)
+
+brakeInput.FocusLost:Connect(function()
+	local num = tonumber(brakeInput.Text)
+	if num and num > 0 then
+		brakeAmount = num
+		brakeRatePerSec = brakeAmount / brakeSpeed
+		brakeRateInput.Text = tostring(math.floor(brakeRatePerSec))
+		saveAll()
+	end
+end)
+
+brakeTimeInput.FocusLost:Connect(function()
+	local num = tonumber(brakeTimeInput.Text)
+	if num and num > 0 then
+		brakeSpeed = num
+		brakeAmount = brakeRatePerSec * brakeSpeed
+		brakeInput.Text = tostring(brakeAmount)
+		saveAll()
+	end
+end)
+
+brakeRateInput.FocusLost:Connect(function()
+	local num = tonumber(brakeRateInput.Text)
+	if num and num > 0 then
+		brakeRatePerSec = num
+		brakeAmount = brakeRatePerSec * brakeSpeed
+		brakeInput.Text = tostring(brakeAmount)
+		saveAll()
+	end
+end)
+
+sizeInput.FocusLost:Connect(function()
+	local num = tonumber(sizeInput.Text)
+	if num and num > 0 then
+		accelBtnSize = num
+		accelBtn.Size = UDim2.fromOffset(accelBtnSize, accelBtnSize)
+		saveAll()
+	end
+end)
+
+-- ======== ARRASTAR ACELERAR ========
+local draggingAccel = false
+local dragStartAccel, startPosAccel
+
+accelBtn.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		draggingAccel = true
+		dragStartAccel = input.Position
+		startPosAccel = accelBtn.Position
+	end
+end)
+
+accelBtn.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		if draggingAccel then
+			draggingAccel = false
+			savedAccelPosX = accelBtn.Position.X.Offset
+			savedAccelPosY = accelBtn.Position.Y.Offset
+			saveAll()
+		end
+	end
+end)
+
+-- ======== ARRASTAR PULO ========
+local jumpDragging = false
+local jumpDragStart, jumpStartPos
+
+jumpContainer.InputBegan:Connect(function(input)
+	if jumpPosLocked then return end
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		jumpDragging = true
+		jumpDragStart = input.Position
+		jumpStartPos = jumpContainer.Position
+	end
+end)
+
+jumpContainer.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		if jumpDragging then
+			jumpDragging = false
+			saveAll()
+		end
+	end
+end)
+
+-- ======== ARRASTAR GRAU ========
+local wheelieDragging = false
+local wheelieDragStart, wheelieStartPos
+
+wheelieBtn.InputBegan:Connect(function(input)
+	if wheeliePosLocked then return end
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		wheelieDragging = true
+		wheelieDragStart = input.Position
+		wheelieStartPos = wheelieBtn.Position
+	end
+end)
+
+wheelieBtn.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		if wheelieDragging then
+			wheelieDragging = false
+			saveAll()
+		end
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if draggingAccel then
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			local delta = input.Position - dragStartAccel
+			if not lockedAccel then
+				accelBtn.Position = UDim2.new(
+					startPosAccel.X.Scale, startPosAccel.X.Offset + delta.X,
+					startPosAccel.Y.Scale, startPosAccel.Y.Offset + delta.Y
+				)
+			end
+		end
+	end
+	if jumpDragging then
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			local delta = input.Position - jumpDragStart
+			jumpContainer.Position = UDim2.new(
+				jumpStartPos.X.Scale, jumpStartPos.X.Offset + delta.X,
+				jumpStartPos.Y.Scale, jumpStartPos.Y.Offset + delta.Y
+			)
+		end
+	end
+	if wheelieDragging then
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			local delta = input.Position - wheelieDragStart
+			wheelieBtn.Position = UDim2.new(
+				wheelieStartPos.X.Scale, wheelieStartPos.X.Offset + delta.X,
+				wheelieStartPos.Y.Scale, wheelieStartPos.Y.Offset + delta.Y
+			)
+		end
+	end
+end)
+
+-- ======== DETECÇÃO DE TOQUE DO BOTÃO ACELERAR (COM LIMPEZA DE TOQUES FANTASMAS) ========
+local activeTouches = {}
+
+UserInputService.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+		activeTouches[input] = input.Position
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if activeTouches[input] then
+		activeTouches[input] = input.Position
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	activeTouches[input] = nil
+end)
+
+RunService.RenderStepped:Connect(function()
+	if not accelOn then
+		if isAccelerating then startAutoBrake() end
+		return
+	end
+
+	local seat = getSeat()
+	if not seat or not seat:IsA("VehicleSeat") then
+		if isAccelerating then startAutoBrake() end
+		return
+	end
+
+	local isTouching = false
+	local accelPos = accelBtn.AbsolutePosition
+	local accelSize = accelBtn.AbsoluteSize
+
+	for input, pos in pairs(activeTouches) do
+		-- Limpa toques travados ou inválidos automaticamente
+		if input.UserInputState == Enum.UserInputState.End or input.UserInputState == Enum.UserInputState.Cancel then
+			activeTouches[input] = nil
+		else
+			if pos.X >= accelPos.X and pos.X <= accelPos.X + accelSize.X and
+			   pos.Y >= accelPos.Y and pos.Y <= accelPos.Y + accelSize.Y then
+				isTouching = true
+				break
+			end
+		end
+	end
+
+	if isTouching then
+		if not isAccelerating then startAccel() end
+	else
+		if isAccelerating then startAutoBrake() end
+	end
+end)
+
+-- ======== BOTÕES DO MENU ========
+onOffBtn.MouseButton1Click:Connect(function()
+	accelOn = not accelOn
+	onOffBtn.Text = accelOn and "ON" or "OFF"
+	onOffBtn.BackgroundColor3 = accelOn and Color3.fromRGB(0,170,0) or Color3.fromRGB(170,0,0)
+	
+	-- LIMPA TODOS OS TOQUES FANTASMAS AO LIGAR/DESLIGAR
+	activeTouches = {}
+	isAccelerating = false
+	isBraking = false
+	currentSpeed = 0
+	targetSpeed = 0
+	if accelLoop then task.cancel(accelLoop); accelLoop = nil end
+	if brakeLoop then task.cancel(brakeLoop); brakeLoop = nil end
+
+	local seat = getSeat()
+	if seat and seat:IsA("VehicleSeat") then
+		accelBtn.Visible = accelOn
+	else
+		accelBtn.Visible = false
+	end
+
+	if accelOn then
+		accelBtn.Position = UDim2.fromOffset(savedAccelPosX, savedAccelPosY)
+	end
+	saveAll()
+end)
+
+lockBtn.MouseButton1Click:Connect(function()
+	lockedAccel = not lockedAccel
+	lockBtn.Text = lockedAccel and "🔒 Acel. Travado" or "🔓 Acel. Livre"
+	lockBtn.BackgroundColor3 = lockedAccel and Color3.fromRGB(200,50,50) or Color3.fromRGB(50,120,200)
+	saveAll()
+end)
+
+jumpToggleBtn.MouseButton1Click:Connect(function()
+	jumpVisible = not jumpVisible
+	jumpToggleBtn.Text = jumpVisible and "⬆️ Pulo: ON" or "⬆️ Pulo: OFF"
+	jumpToggleBtn.BackgroundColor3 = jumpVisible and Color3.fromRGB(0,170,0) or Color3.fromRGB(170,0,0)
+	jumpContainer.Visible = jumpVisible
+	saveAll()
+end)
+
+jumpLockPosBtn.MouseButton1Click:Connect(function()
+	jumpPosLocked = not jumpPosLocked
+	jumpLockPosBtn.Text = jumpPosLocked and "🔒 Pulo Travado" or "🔓 Pulo Livre"
+	jumpLockPosBtn.BackgroundColor3 = jumpPosLocked and Color3.fromRGB(200,50,50) or Color3.fromRGB(50,120,200)
+	saveAll()
+end)
+
+wheelieToggleBtn.MouseButton1Click:Connect(function()
+	wheelieVisible = not wheelieVisible
+	wheelieToggleBtn.Text = wheelieVisible and "🏍️ Grau: ON" or "🏍️ Grau: OFF"
+	wheelieToggleBtn.BackgroundColor3 = wheelieVisible and Color3.fromRGB(0,170,0) or Color3.fromRGB(170,0,0)
+	
+	local seat = getSeat()
+	if seat and seat:IsA("VehicleSeat") then
+		wheelieBtn.Visible = wheelieVisible
+	else
+		wheelieBtn.Visible = false
+	end
+	saveAll()
+end)
+
+wheelieLockPosBtn.MouseButton1Click:Connect(function()
+	wheeliePosLocked = not wheeliePosLocked
+	wheelieLockPosBtn.Text = wheeliePosLocked and "🔒 Grau Travado" or "🔓 Grau Livre"
+	wheelieLockPosBtn.BackgroundColor3 = wheeliePosLocked and Color3.fromRGB(200,50,50) or Color3.fromRGB(50,120,200)
+	saveAll()
+end)
+
+-- ======== ROBLOX UI ORIGINAL ========
+local applyRobloxOriginal = function()
+	pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true) end)
+	pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, true) end)
+	pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Health, true) end)
+	pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, true) end)
+	pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.EmotesMenu, true) end)
+	pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, true) end)
+	local touchGui = player.PlayerGui:FindFirstChild("TouchGui")
+	if touchGui then
+		local cf = touchGui:FindFirstChild("TouchControlFrame")
+		if cf then
+			local jbc = cf:FindFirstChild("JumpButtonContainer")
+			if jbc then jbc.Visible = true end
+			local jb = cf:FindFirstChild("JumpButton")
+			if jb then jb.Visible = true end
+		end
+	end
+end
+
+robloxUIButton.MouseButton1Click:Connect(function()
+	robloxOriginalOn = not robloxOriginalOn
+	robloxUIButton.Text = robloxOriginalOn and "🎮 Roblox: ON" or "🎮 Roblox: OFF"
+	robloxUIButton.BackgroundColor3 = robloxOriginalOn and Color3.fromRGB(0,170,0) or Color3.fromRGB(170,0,0)
+	if robloxOriginalOn then applyRobloxOriginal() end
+	saveAll()
+end)
+
+if robloxOriginalOn then
+	task.spawn(function()
+		task.wait(1)
+		applyRobloxOriginal()
+	end)
+end
+
+task.spawn(function()
+	while true do
+		if robloxOriginalOn then applyRobloxOriginal() end
+		task.wait(0.25)
+	end
+end)
+
+-- ======== MINIMIZAR ========
+local isMinimized = false
+minimizeBtn.MouseButton1Click:Connect(function()
+	isMinimized = not isMinimized
+	if isMinimized then
+		menu.Size = UDim2.fromOffset(50, 50)
+		minimizeBtn.Size = UDim2.fromOffset(34, 34)
+		minimizeBtn.Text = "➕"
+		for _, child in ipairs(menu:GetChildren()) do
+			if child:IsA("GuiObject") and child ~= minimizeBtn then
+				child.Visible = false
+			end
+		end
+	else
+		menu.Size = UDim2.fromOffset(200, 420)
+		minimizeBtn.Size = UDim2.new(1, 0, 0, 30)
+		minimizeBtn.Text = "➖"
+		for _, child in ipairs(menu:GetChildren()) do
+			if child:IsA("GuiObject") then
+				child.Visible = true
+			end
+		end
+	end
+end)
+
+-- ======== LÓGICA DO PULO ========
+local manualJumpRequested = false
+
+jumpLockBtn.MouseButton1Click:Connect(function()
+	autoJumpOn = not autoJumpOn
+	jumpLockBtn.Text = autoJumpOn and "🔒" or "🔓"
+	jumpLockBtn.BackgroundColor3 = autoJumpOn and Color3.fromRGB(0,170,0) or Color3.fromRGB(80,80,90)
+	saveAll()
+end)
+
+jumpBtn.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		manualJumpRequested = true
+	end
+end)
+
+jumpBtn.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		manualJumpRequested = false
+	end
+end)
+
+RunService.RenderStepped:Connect(function()
+	if not jumpVisible then return end
+
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+	if hum then
+		hum.JumpPower = 50
+		hum.JumpHeight = 7.2
+		hum:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+
+		local state = hum:GetState()
+
+		if manualJumpRequested or autoJumpOn then
+			if state == Enum.HumanoidStateType.Landed or
+			   state == Enum.HumanoidStateType.Running or
+			   state == Enum.HumanoidStateType.RunningNoPhysics then
+
+				hum.Jump = true
+
+				local touchGui = player.PlayerGui:FindFirstChild("TouchGui")
+				if touchGui then
+					local controlFrame = touchGui:FindFirstChild("TouchControlFrame")
+					if controlFrame then
+						local robloxJumpBtn = controlFrame:FindFirstChild("JumpButton")
+						if robloxJumpBtn then
+							pcall(function() robloxJumpBtn:Fire("MouseButton1Down") end)
+							task.wait(0.05)
+							pcall(function() robloxJumpBtn:Fire("MouseButton1Up") end)
+						end
+					end
+				end
+			end
+		end
+	end
+end)
+
+-- ======== LÓGICA DO GRAU ========
+local manualWheelieRequested = false
+
+wheelieBtn.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		manualWheelieRequested = true
+	end
+end)
+
+wheelieBtn.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		manualWheelieRequested = false
+	end
+end)
+
+RunService.RenderStepped:Connect(function()
+	if not wheelieVisible then return end
+	local seat = getSeat()
+	if seat and seat:IsA("VehicleSeat") then
+		local chassis = seat.Parent.PrimaryPart or seat
+		if chassis and manualWheelieRequested then
+			local upDot = chassis.CFrame.UpVector:Dot(Vector3.new(0, 1, 0))
+			if upDot > 0.4 then
+				chassis.AssemblyAngularVelocity = chassis.AssemblyAngularVelocity + (chassis.CFrame.RightVector * 2.0)
+			else
+				chassis.AssemblyAngularVelocity = Vector3.new(0, chassis.AssemblyAngularVelocity.Y, 0)
+			end
+		end
+	end
+end)

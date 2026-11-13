@@ -1,4 +1,4 @@
-print("[SINK] Menu Compacto + Scroll + Travar Voo + Save Posição")
+print("[SINK] Menu Compacto + Scroll + Sistema de Locais + TP Robusto")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -16,7 +16,8 @@ local Config = {
     FloatPosImpulsoX = 0.85,
     FloatPosImpulsoY = 0.5,
     FloatPosVooX = 0.85,
-    FloatPosVooY = 0.4
+    FloatPosVooY = 0.4,
+    LocaisSalvos = {} -- Armadilha para os locais salvos
 }
 
 local function SalvarConfig()
@@ -35,6 +36,7 @@ local function CarregarConfig()
             if data.FloatPosImpulsoY then Config.FloatPosImpulsoY = data.FloatPosImpulsoY end
             if data.FloatPosVooX then Config.FloatPosVooX = data.FloatPosVooX end
             if data.FloatPosVooY then Config.FloatPosVooY = data.FloatPosVooY end
+            if data.LocaisSalvos then Config.LocaisSalvos = data.LocaisSalvos end
         end
     end
 end
@@ -112,7 +114,7 @@ scroll.BackgroundTransparency = 1
 scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 4
 scroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 110)
-scroll.CanvasSize = UDim2.new(0, 0, 0, 400)
+scroll.CanvasSize = UDim2.new(0, 0, 0, 520)
 scroll.Parent = frame
 
 local function mkBtn(txt, y, color, height)
@@ -185,6 +187,132 @@ local lockBtn = mkBtn("TRAVAR BOTÃO: OFF", 234, Color3.fromRGB(100, 100, 110))
 local vooBtn = mkBtn("BOTÃO VOAR: OFF", 268, Color3.fromRGB(200, 50, 50))
 local lockVooBtn = mkBtn("TRAVAR VOAR: OFF", 300, Color3.fromRGB(100, 100, 110))
 local baseBtn = mkBtn("BASE DE QUEDA: OFF", 334, Color3.fromRGB(100, 100, 110))
+local salvarLocalBtn = mkBtn("SALVAR LOCAL ATUAL", 368, Color3.fromRGB(50, 200, 150))
+
+-- Container de Locais Salvos dentro do Scroll
+local locaisContainer = Instance.new("Frame")
+locaisContainer.Size = UDim2.new(1, -16, 0, 120)
+locaisContainer.Position = UDim2.new(0, 8, 0, 402)
+locaisContainer.BackgroundTransparency = 1
+locaisContainer.Parent = scroll
+
+local locaisListLayout = Instance.new("UIListLayout")
+locaisListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+locaisListLayout.Padding = UDim.new(0, 4)
+locaisListLayout.Parent = locaisContainer
+
+-- ======================== TÉCNICA DE TP DO SCRIPT ORIGINAL ========================
+local function fakeSeatTP(targetPos)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
+    hrp.CanCollide = false
+    hum.PlatformStand = true 
+    hum:ChangeState(Enum.HumanoidStateType.Physics)
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.AssemblyAngularVelocity = Vector3.zero
+    hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+    hrp.Anchored = true
+    task.wait(1.5)
+    if hrp and hrp.Parent then
+        hrp.Anchored = false
+        hrp.CanCollide = true
+        hum.PlatformStand = false
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
+    task.wait(0.1)
+end
+
+-- ======================== GERENCIAR LISTA DE LOCAIS ========================
+local function atualizarListaLocais()
+    -- Limpa itens visuais atuais
+    for _, child in ipairs(locaisContainer:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+
+    local alturaTotal = 0
+    for i, localData in ipairs(Config.LocaisSalvos) do
+        alturaTotal = alturaTotal + 26
+
+        local itemFrame = Instance.new("Frame")
+        itemFrame.Size = UDim2.new(1, 0, 0, 22)
+        itemFrame.BackgroundColor3 = localData.Cor or Color3.fromRGB(60, 60, 70)
+        itemFrame.BorderSizePixel = 0
+        itemFrame.Parent = locaisContainer
+        Instance.new("UICorner", itemFrame).CornerRadius = UDim.new(0, 4)
+
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(1, -55, 1, 0)
+        nameLabel.Position = UDim2.new(0, 6, 0, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Text = "Local " .. i
+        nameLabel.TextColor3 = Color3.new(1, 1, 1)
+        nameLabel.TextSize = 11
+        nameLabel.Font = Enum.Font.GothamBold
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.Parent = itemFrame
+
+        local tpBtn = Instance.new("TextButton")
+        tpBtn.Size = UDim2.new(0, 45, 0, 18)
+        tpBtn.Position = UDim2.new(1, -48, 0, 2)
+        tpBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+        tpBtn.Text = "TP"
+        tpBtn.TextColor3 = Color3.new(1, 1, 1)
+        tpBtn.TextSize = 10
+        tpBtn.Font = Enum.Font.GothamBold
+        tpBtn.BorderSizePixel = 0
+        tpBtn.Parent = itemFrame
+        Instance.new("UICorner", tpBtn).CornerRadius = UDim.new(0, 4)
+
+        -- Ao clicar no botão TP, usa exatamente a técnica pedida
+        tpBtn.MouseButton1Click:Connect(function()
+            task.spawn(function()
+                fakeSeatTP(Vector3.new(localData.X, localData.Y, localData.Z))
+            end)
+        end)
+    end
+
+    locaisContainer.Size = UDim2.new(1, -16, 0, math.max(120, #Config.LocaisSalvos * 26))
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 430 + locaisContainer.AbsoluteSize.Y)
+end
+
+salvarLocalBtn.MouseButton1Click:Connect(function()
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        local pos = char.HumanoidRootPart.Position
+        -- Gera uma cor única/distinta com base no número de locais salvos
+        local hue = (#Config.LocaisSalvos * 0.37) % 1
+        local novaCor = Color3.fromHSV(hue, 0.7, 0.9)
+
+        table.insert(Config.LocaisSalvos, {
+            X = pos.X,
+            Y = pos.Y,
+            Z = pos.Z,
+            Cor = {novaCor.R, novaCor.G, novaCor.B} -- Armazena em tabela pura para JSON
+        })
+        SalvarConfig()
+        
+        -- Converte a cor salva de volta para Color3 para a UI atual
+        Config.LocaisSalvos[#Config.LocaisSalvos].Cor = novaCor
+        atualizarListaLocais()
+        
+        salvarLocalBtn.Text = "LOCAL SALVO!"
+        task.wait(1.5)
+        salvarLocalBtn.Text = "SALVAR LOCAL ATUAL"
+    end
+end)
+
+-- Carregar locais salvos iniciais convertendo tabelas para Color3
+for _, loc in ipairs(Config.LocaisSalvos) do
+    if type(loc.Cor) == "table" then
+        loc.Cor = Color3.new(loc.Cor[1], loc.Cor[2], loc.Cor[3])
+    end
+end
+atualizarListaLocais()
 
 -- ======================== LÓGICA DE ARRASTAR ========================
 local function makeDraggable(obj, dragArea)
@@ -247,7 +375,6 @@ floatBtn.InputBegan:Connect(function(input)
         input.Changed:Connect(function() 
             if input.UserInputState == Enum.UserInputState.End then 
                 draggingFloat = false 
-                -- SALVAR POSIÇÃO DO IMPULSO
                 Config.FloatPosImpulsoX = floatBtn.Position.X.Scale
                 Config.FloatPosImpulsoY = floatBtn.Position.Y.Scale
                 SalvarConfig()
@@ -296,7 +423,6 @@ floatVooBtn.InputBegan:Connect(function(input)
         input.Changed:Connect(function() 
             if input.UserInputState == Enum.UserInputState.End then 
                 draggingVoo = false 
-                -- SALVAR POSIÇÃO DO VOO
                 Config.FloatPosVooX = floatVooBtn.Position.X.Scale
                 Config.FloatPosVooY = floatVooBtn.Position.Y.Scale
                 SalvarConfig()
@@ -354,7 +480,6 @@ local function pararVoo()
     isHoldingVoo = false
 end
 
-floatVooBtn.MouseButton1Up:Connect(pararVoo)
 floatVooBtn.MouseButton1Up:Connect(pararVoo)
 floatVooBtn.MouseButton1Click:Connect(function()
     local duracao = tick() - vooTempoApertou
@@ -593,29 +718,6 @@ local function findMotoByName()
         end
     end
     return nil
-end
-
-local function fakeSeatTP(targetPos)
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hrp or not hum then return end
-    hrp.CanCollide = false
-    hum.PlatformStand = true 
-    hum:ChangeState(Enum.HumanoidStateType.Physics)
-    hrp.AssemblyLinearVelocity = Vector3.zero
-    hrp.AssemblyAngularVelocity = Vector3.zero
-    hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
-    hrp.Anchored = true
-    task.wait(1.5)
-    if hrp and hrp.Parent then
-        hrp.Anchored = false
-        hrp.CanCollide = true
-        hum.PlatformStand = false
-        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-    end
-    task.wait(0.1)
 end
 
 setPos1Btn.MouseButton1Click:Connect(function()

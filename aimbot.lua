@@ -39,7 +39,7 @@ local Config = {
     PromptBtnY=0.6, HeadDelay=1.5, ESPAllPlayers=false, ShowFriendMarker=true,
     ShowKillCounter=true, HealthBarHeight=10.8, CameraDistance=80,
     CameraLocked=false, RaiseCamera=false, 
-    CameraRaiseOffset=3.5, -- ✅ NOVO: Guarda a altura da câmera
+    CameraRaiseOffset=3.5,
 }
 
 local isAimingHead=false
@@ -62,6 +62,43 @@ local function IsRobloxFriend(tp)
     local ok,f=pcall(function() return LocalPlayer:IsFriendsWith(tp.UserId) end)
     FriendCache[tp.UserId]=(ok and f) or false
     return FriendCache[tp.UserId]
+end
+
+-- ✅ NOVA FUNÇÃO: VERIFICA SE ESTÁ NA SAFE
+local function IsInSafeZone(player)
+    if not player or not player.Character then return false end
+    local char = player.Character
+    
+    -- 1. Verifica ForceField (Escudo de invulnerabilidade padrão do Roblox)
+    if char:FindFirstChildOfClass("ForceField") then return true end
+    
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum and hum:FindFirstChildOfClass("ForceField") then return true end
+    
+    -- 2. Verifica se tem alguma tag/atributo chamado Safe
+    local safeAttributes = {"Safe", "InSafe", "IsSafe", "Protected", "God"}
+    for _, attr in ipairs(safeAttributes) do
+        if char:GetAttribute(attr) or player:GetAttribute(attr) then return true end
+    end
+
+    -- 3. Verifica se o jogador está pisando numa área invisível chamada SafeZone
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if root then
+        local rp = RaycastParams.new()
+        rp.FilterType = Enum.RaycastFilterType.Exclude
+        rp.FilterDescendantsInstances = {char}
+        
+        -- Joga um raio 3 studs pra baixo pra ver o que ele tá pisando
+        local result = workspace:Raycast(root.Position, Vector3.new(0, -3, 0), rp)
+        if result and result.Instance then
+            local name = string.lower(result.Instance.Name)
+            if string.find(name, "safe") or string.find(name, "protect") then
+                return true
+            end
+        end
+    end
+
+    return false
 end
 
 local function SaveConfig()
@@ -164,7 +201,7 @@ ContentScroll.Position=UDim2.new(0,0,0,30)
 ContentScroll.BackgroundTransparency=1
 ContentScroll.BorderSizePixel=0
 ContentScroll.ScrollBarThickness=6
-ContentScroll.CanvasSize=UDim2.new(0,0,0,1000) -- Aumentado para caber o novo TextBox
+ContentScroll.CanvasSize=UDim2.new(0,0,0,1000)
 ContentScroll.Parent=MainFrame
 
 local AimToggle=Instance.new("TextButton")
@@ -229,10 +266,7 @@ local HealthBtn=MakeBtn("MOSTRAR VIDA: "..(Config.ShowHealth and "ON" or "OFF"),
 local FriendListBtn=MakeBtn("LISTA DE AMIGOS/INIMIGOS",415,Color3.fromRGB(150,50,200))
 local CameraBtn=MakeBtn("SAIR DA 1ª PESSOA: OFF",455)
 local RaiseCamBtn=MakeBtn("LEVANTAR CÂMERA: OFF",495,Color3.fromRGB(200,50,50))
-
--- ✅ NOVO TEXTBOX PARA ALTURA DA CÂMERA
 MakeLabel("Subir Câmera:",535) local RaiseAmountBox=MakeBox(535,Config.CameraRaiseOffset)
-
 MakeLabel("Dist. Direita:",575) local OffsetBox=MakeBox(575,Config.CameraOffsetRight)
 MakeLabel("Câmera ↑perto:", 615, 130) local CameraDistBox=MakeBox(615, Config.CameraDistance)
 local CameraLockBtn=MakeBtn("TRAVAR CÂMERA: OFF", 655, Color3.fromRGB(200,50,50))
@@ -470,7 +504,6 @@ local function forceThirdPerson()
         if Camera.CameraType~=Enum.CameraType.Custom then Camera.CameraType=Enum.CameraType.Custom end
         if Camera.CameraSubject~=hum then Camera.CameraSubject=hum end
         
-        -- ✅ USA O VALOR DO TEXTBOX AQUI
         local yOffset = Config.RaiseCamera and Config.CameraRaiseOffset or 0
         local off = Vector3.new(Config.CameraOffsetRight, yOffset, 0)
         if hum.CameraOffset~=off then hum.CameraOffset=off end
@@ -777,7 +810,7 @@ local function HookEnemyDeath(player)
 end
 
 -- ======================================================
--- ESP HIGHLIGHT & CRUZ (NÃO-AMIGOS)
+-- ESP HIGHLIGHT & CRUZ (NÃO-AMIGOS) - COM DETECÇÃO DE SAFE
 -- ======================================================
 local ESPHighlights={}
 local EnemyPlusFrames={}
@@ -805,11 +838,11 @@ local function ApplyESP(player)
         return
     end
 
+    -- Cria o Highlight se não existir
     if not ESPHighlights[player] or ESPHighlights[player].Adornee ~= char then
         RemoveESP(player)
         local hl=Instance.new("Highlight")
         hl.Name="hl"
-        hl.FillColor=Color3.fromRGB(255,30,30)
         hl.OutlineColor=Color3.fromRGB(255,255,255)
         hl.FillTransparency=0.55
         hl.OutlineTransparency=0
@@ -819,6 +852,7 @@ local function ApplyESP(player)
         ESPHighlights[player]=hl
     end
 
+    -- Cria o "+" se não existir
     local hum = char:FindFirstChildOfClass("Humanoid")
     local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") or char:FindFirstChild("HumanoidRootPart")
     
@@ -852,12 +886,24 @@ local function ApplyESP(player)
             EnemyPlusFrames[player] = bgui
         end
 
-        local lbl = EnemyPlusFrames[player]:FindFirstChild("PlusLabel")
-        if lbl then
-            if hum.Health > 0 then
-                lbl.TextColor3 = Color3.fromRGB(255, 0, 0)
-            else
-                lbl.TextColor3 = Color3.fromRGB(255, 165, 0)
+        -- ✅ ATUALIZA CORES BASEADO EM VIDA E SAFE
+        local inSafe = IsInSafeZone(player)
+        local plusLbl = EnemyPlusFrames[player]:FindFirstChild("PlusLabel")
+        local hl = ESPHighlights[player]
+
+        if inSafe then
+            -- Safe: Tudo Verde
+            if hl then hl.FillColor = Color3.fromRGB(0, 255, 0) end
+            if plusLbl then plusLbl.TextColor3 = Color3.fromRGB(0, 255, 0) end
+        else
+            -- Fora da safe: Vermelho (Vivo) ou Laranja (Morto)
+            if hl then hl.FillColor = Color3.fromRGB(255, 30, 30) end
+            if plusLbl then
+                if hum.Health > 0 then
+                    plusLbl.TextColor3 = Color3.fromRGB(255, 0, 0)
+                else
+                    plusLbl.TextColor3 = Color3.fromRGB(255, 165, 0)
+                end
             end
         end
     end
@@ -1006,7 +1052,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ======================================================
--- LOOP DE SEGURANÇA (GARANTE O ESP E A COR DO "+")
+-- LOOP DE SEGURANÇA (GARANTE O ESP E AS CORES)
 -- ======================================================
 task.spawn(function()
     while true do
@@ -1039,17 +1085,27 @@ task.spawn(function()
             end
         end
         
+        -- ✅ ATUALIZAÇÃO EM TEMPO REAL DO "+" E DA BORDA SE ENTRAR/SAIR DA SAFE
         for player, plusGui in pairs(EnemyPlusFrames) do
             if plusGui and plusGui.Parent then
                 local char = player.Character
                 local hum = char and char:FindFirstChildOfClass("Humanoid")
                 local lbl = plusGui:FindFirstChild("PlusLabel")
+                local hl = ESPHighlights[player]
                 
                 if hum and lbl then
-                    if hum.Health > 0 then
-                        lbl.TextColor3 = Color3.fromRGB(255, 0, 0)
+                    local inSafe = IsInSafeZone(player)
+                    
+                    if inSafe then
+                        if hl then hl.FillColor = Color3.fromRGB(0, 255, 0) end
+                        lbl.TextColor3 = Color3.fromRGB(0, 255, 0)
                     else
-                        lbl.TextColor3 = Color3.fromRGB(255, 165, 0)
+                        if hl then hl.FillColor = Color3.fromRGB(255, 30, 30) end
+                        if hum.Health > 0 then
+                            lbl.TextColor3 = Color3.fromRGB(255, 0, 0)
+                        else
+                            lbl.TextColor3 = Color3.fromRGB(255, 165, 0)
+                        end
                     end
                 end
             end
@@ -1275,7 +1331,7 @@ local function UpdateLockRing(tp)
 end
 
 -- ======================================================
--- UTILITÁRIOS AIMBOT
+-- UTILITÁRIOS AIMBOT (COM CHECAGEM DE SAFE)
 -- ======================================================
 local function IsVisible(part)
     if not part then return false end
@@ -1304,6 +1360,10 @@ local function IsTargetValid(p)
     local part=p.Character:FindFirstChild(Config.AimPart) or p.Character:FindFirstChild("HumanoidRootPart") or p.Character:FindFirstChild("Head")
     if not h or h.Health<=0 or not part then return false end
     if GetPlayerDistance3D(p)>Config.MaxDistance then return false end
+    
+    -- ✅ AQUI: O AIMBOT IGNORA QUEM ESTÁ NA SAFE
+    if IsInSafeZone(p) then return false end
+    
     if IsPlayerMyTeammate(p) then return false end
     if Config.IgnoreWalls and not IsVisible(part) then return false end
     return true
@@ -1463,7 +1523,7 @@ function UpdateVisuals()
     CameraLockBtn.Text = "TRAVAR CÂMERA: " .. (Config.CameraLocked and "ON" or "OFF")
     OffsetBox.Text=tostring(Config.CameraOffsetRight)
     CameraDistBox.Text=tostring(Config.CameraDistance)
-    RaiseAmountBox.Text=tostring(Config.CameraRaiseOffset) -- ✅ Atualiza o textbox
+    RaiseAmountBox.Text=tostring(Config.CameraRaiseOffset)
     MaxDistBox.Text=tostring(Config.MaxDistance)
     ScreenLockMenuBtn.BackgroundColor3=Config.LockScreenEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(50,50,50)
     ScreenLockMenuBtn.Text="CADEADO TELA: "..(Config.LockScreenEnabled and "ON" or "OFF")
@@ -1556,7 +1616,6 @@ OffsetBox.FocusLost:Connect(function()
     else OffsetBox.Text=tostring(Config.CameraOffsetRight) end
 end)
 
--- ✅ NOVO HANDLER DO TEXTBOX DE ALTURA
 RaiseAmountBox.FocusLost:Connect(function()
     local n=tonumber(RaiseAmountBox.Text)
     if n and n>=0 then 

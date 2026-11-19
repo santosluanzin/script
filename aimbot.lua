@@ -11,6 +11,24 @@ local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
 
+-- ✅ TABELA CONFIG MOVIDA PARA CÁ (Antes de ser usada pela função abaixo)
+local Config = {
+    Enabled=false, AimPart="Neck", FOV=25, FOV_Sticky=45, MaxDistance=100,
+    Smoothness=0.15, Prediction=0.08, Locked=false, IgnoreTeam=true,
+    IgnoreWalls=false, ShowHealth=false, CameraForce=false, CameraOffsetRight=2.5,
+    LockScreenEnabled=false, LockScreenFixed=false, AutoPromptEnabled=false,
+    AutoPromptFixed=false, LockBtnX=0.15, LockBtnY=0.4, PromptBtnX=0.7,
+    PromptBtnY=0.6, HeadDelay=1.5, ESPAllPlayers=false, ShowFriendMarker=true,
+    ShowKillCounter=true, HealthBarHeight=10.8, CameraDistance=80,
+    CameraLocked=false, RaiseCamera=false, CameraRaiseOffset=3.5,
+    SizeBoostEnabled=false, SizeBoost=1.0,
+    DamageDetectEnabled=true, DamageThreatTime=4,
+    BulletHoleRadius=60, BulletHoleShooterDist=800, SoundRadius=200, SoundShooterDist=500,
+    ThreatMaxDistance=1500,
+    ArmedLockEnabled=false, ShowArmedLabel=true,
+    ManualReleaseTime=2.0,
+}
+
 local RobloxMenuOpen = false
 pcall(function()
     GuiService.MenuOpened:Connect(function() RobloxMenuOpen = true end)
@@ -31,23 +49,6 @@ pcall(function()
         end
     end)
 end)
-
-local Config = {
-    Enabled=false, AimPart="Neck", FOV=25, FOV_Sticky=45, MaxDistance=100,
-    Smoothness=0.15, Prediction=0.08, Locked=false, IgnoreTeam=true,
-    IgnoreWalls=false, ShowHealth=false, CameraForce=false, CameraOffsetRight=2.5,
-    LockScreenEnabled=false, LockScreenFixed=false, AutoPromptEnabled=false,
-    AutoPromptFixed=false, LockBtnX=0.15, LockBtnY=0.4, PromptBtnX=0.7,
-    PromptBtnY=0.6, HeadDelay=1.5, ESPAllPlayers=false, ShowFriendMarker=true,
-    ShowKillCounter=true, HealthBarHeight=10.8, CameraDistance=80,
-    CameraLocked=false, RaiseCamera=false, CameraRaiseOffset=3.5,
-    SizeBoostEnabled=false, SizeBoost=1.0,
-    DamageDetectEnabled=true, DamageThreatTime=4,
-    BulletHoleRadius=60, BulletHoleShooterDist=800, SoundRadius=200, SoundShooterDist=500,
-    ThreatMaxDistance=1500,
-    ArmedLockEnabled=false, ShowArmedLabel=true,
-    ManualReleaseTime=2.0,
-}
 
 local isAimingHead=false
 local lastInputPosition=nil

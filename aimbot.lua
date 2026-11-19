@@ -11,7 +11,7 @@ local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
 
--- ✅ TABELA CONFIG MOVIDA PARA CÁ (Antes de ser usada pela função abaixo)
+-- ✅ TABELA CONFIG
 local Config = {
     Enabled=false, AimPart="Neck", FOV=25, FOV_Sticky=45, MaxDistance=100,
     Smoothness=0.15, Prediction=0.08, Locked=false, IgnoreTeam=true,
@@ -27,6 +27,7 @@ local Config = {
     ThreatMaxDistance=1500,
     ArmedLockEnabled=false, ShowArmedLabel=true,
     ManualReleaseTime=2.0,
+    StickOnlyArmedNoWall=false, -- ✅ NOVA CONFIGURAÇÃO
 }
 
 local RobloxMenuOpen = false
@@ -69,7 +70,6 @@ local function IsRobloxFriend(tp)
     return FriendCache[tp.UserId]
 end
 
--- ===== FUNÇÃO CHAVE: Só conta se a arma estiver equipada (no Character) e visível =====
 local function HasWeaponInHand(player)
     if not player or not player.Character then return false end
     local char = player.Character
@@ -184,7 +184,8 @@ MinimizeBtn.TextSize=20
 local ContentScroll=Instance.new("ScrollingFrame",MainFrame)
 ContentScroll.Size=UDim2.new(1,0,1,-30) ContentScroll.Position=UDim2.new(0,0,0,30)
 ContentScroll.BackgroundTransparency=1 ContentScroll.BorderSizePixel=0
-ContentScroll.ScrollBarThickness=6 ContentScroll.CanvasSize=UDim2.new(0,0,0,1350)
+ContentScroll.ScrollBarThickness=6 
+ContentScroll.CanvasSize=UDim2.new(0,0,0,1400) -- ✅ Aumentado para caber o novo botão
 
 local AimToggle=Instance.new("TextButton",ContentScroll)
 AimToggle.Size=UDim2.new(0,200,0,35) AimToggle.Position=UDim2.new(0.5,-100,0,10)
@@ -277,6 +278,9 @@ SndShooterBox.Position=UDim2.new(0,170,0,1175)
 local ArmedLockBtn = MakeBtn("TRAVAR SÓ ARMADOS: OFF", 1215, Color3.fromRGB(200,50,50))
 local ArmedLabelBtn = MakeBtn("MOSTRAR 'ARMADO': ON", 1255, Color3.fromRGB(50,200,50))
 MakeLabel("Tempo Retorno (s):",1295,130) local ReleaseTimeBox=MakeBox(1295,Config.ManualReleaseTime)
+
+-- ✅ NOVO BOTÃO AQUI
+local StickArmedNoWallBtn = MakeBtn("GRUDAR SÓ ARMADO (SEM PAREDES): OFF", 1335, Color3.fromRGB(200,50,50))
 
 -- ======================================================
 -- TAMANHO
@@ -882,7 +886,7 @@ TargetHighlight.FillTransparency=0.55 TargetHighlight.OutlineColor=Color3.fromRG
 TargetHighlight.OutlineTransparency=0 TargetHighlight.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
 
 -- ======================================================
--- LABELS "ARMADO" POR PLAYER (respeita FOV + Max Distance + ARMA NA MÃO)
+-- LABELS "ARMADO" POR PLAYER
 -- ======================================================
 local ArmedLabels = {}
 
@@ -1299,18 +1303,36 @@ local function GetTarget()
     local t, s = GetThreatTarget()
     if t then return t, s end
 
-    -- 1º: Se "TRAVAR SÓ ARMADOS" estiver ON, procura primeiro armado (sticky)
+    -- 1º: Lógica do TRAVAR SÓ ARMADOS
     if Config.ArmedLockEnabled then
+        -- Verifica o alvo atual (Sticky)
         if CurrentTarget and IsTargetValid(CurrentTarget) and not IsManuallyReleased(CurrentTarget) and HasWeaponInHand(CurrentTarget) then
             local d, on = GetScreenDistanceToPlayer(CurrentTarget)
-            if on and d <= Config.FOV_Sticky then return CurrentTarget, "armed_sticky" end
+            if on and d <= Config.FOV_Sticky then 
+                -- ✅ AQUI ENTRA A NOVA REGRA: Se a nova opção estiver ON, só trava se estiver visível
+                if Config.StickOnlyArmedNoWall then
+                    local cPart = CurrentTarget.Character:FindFirstChild(Config.AimPart) or CurrentTarget.Character:FindFirstChild("HumanoidRootPart")
+                    if cPart and IsVisible(cPart) then
+                        return CurrentTarget, "armed_sticky"
+                    end
+                else
+                    return CurrentTarget, "armed_sticky"
+                end
+            end
         end
-        -- Se o alvo atual foi solto, varre TODOS os players atrás de QUALQUER armado no FOV instantaneamente
+        
+        -- Varre todos os jogadores atrás de armados
         local bestArmed, bestArmedD = nil, Config.FOV
         for _, p in pairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and IsTargetValid(p) and not IsManuallyReleased(p) and HasWeaponInHand(p) then
-                local d, on = GetScreenDistanceToPlayer(p)
-                if on and d < bestArmedD then bestArmedD = d bestArmed = p end
+                local cPart = p.Character:FindFirstChild(Config.AimPart) or p.Character:FindFirstChild("HumanoidRootPart")
+                if cPart then
+                    -- ✅ AQUI ENTRA A NOVA REGRA: Se a nova opção estiver ON, ignora quem estiver atrás de parede
+                    if not Config.StickOnlyArmedNoWall or IsVisible(cPart) then
+                        local d, on = GetScreenDistanceToPlayer(p)
+                        if on and d < bestArmedD then bestArmedD = d bestArmed = p end
+                    end
+                end
             end
         end
         if bestArmed then return bestArmed, "armed" end
@@ -1362,7 +1384,6 @@ RunService.RenderStepped:Connect(function()
         StickyCircle.Visible = false
     end
 
-    -- COR DO FOV: Vermelho sem alvo, Verde com alvo grudado
     if targetPlayer then
         FS.Color = Color3.fromRGB(0, 255, 0)
     else
@@ -1580,6 +1601,10 @@ function UpdateVisuals()
     ArmedLabelBtn.BackgroundColor3 = Config.ShowArmedLabel and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
     ArmedLabelBtn.Text = "MOSTRAR 'ARMADO': " .. (Config.ShowArmedLabel and "ON" or "OFF")
     ReleaseTimeBox.Text=tostring(Config.ManualReleaseTime)
+    
+    -- ✅ ATUALIZAÇÃO VISUAL DO NOVO BOTÃO
+    StickArmedNoWallBtn.BackgroundColor3 = Config.StickOnlyArmedNoWall and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
+    StickArmedNoWallBtn.Text = "GRUDAR SÓ ARMADO (SEM PAREDES): " .. (Config.StickOnlyArmedNoWall and "ON" or "OFF")
 end
 
 -- ======================================================
@@ -1617,6 +1642,13 @@ ArmedLabelBtn.MouseButton1Click:Connect(function()
     if not Config.ShowArmedLabel then
         for _,bgui in pairs(ArmedLabels) do bgui.Enabled = false end
     end
+    UpdateVisuals()
+    SaveConfig()
+end)
+
+-- ✅ HANDLER DO NOVO BOTÃO
+StickArmedNoWallBtn.MouseButton1Click:Connect(function()
+    Config.StickOnlyArmedNoWall = not Config.StickOnlyArmedNoWall
     UpdateVisuals()
     SaveConfig()
 end)

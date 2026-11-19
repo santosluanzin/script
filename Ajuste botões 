@@ -1,0 +1,327 @@
+-- ============================================
+-- MENU AJUSTÁVEL CORRIGIDO - DELTA
+-- ============================================
+
+if game.CoreGui:FindFirstChild("AjusteMenu") then
+    game.CoreGui.AjusteMenu:Destroy()
+end
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- ============================================
+-- GUI PRINCIPAL
+-- ============================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AjusteMenu"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.Parent = game.CoreGui
+
+local Main = Instance.new("Frame")
+Main.Name = "Main"
+Main.Size = UDim2.new(0, 210, 0, 180)
+Main.Position = UDim2.new(0, 50, 0, 50)
+Main.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 8)
+MainCorner.Parent = Main
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(80, 120, 200)
+MainStroke.Thickness = 1.5
+MainStroke.Parent = Main
+
+-- ============================================
+-- HEADER (arrastável manualmente)
+-- ============================================
+local Header = Instance.new("Frame")
+Header.Name = "Header"
+Header.Size = UDim2.new(1, 0, 0, 32)
+Header.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+Header.BorderSizePixel = 0
+Header.Active = true
+Header.Parent = Main
+
+local HeaderCorner = Instance.new("UICorner")
+HeaderCorner.CornerRadius = UDim.new(0, 8)
+HeaderCorner.Parent = Header
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -40, 1, 0)
+Title.Position = UDim2.new(0, 10, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "⚙ Ajuste de Botões"
+Title.TextColor3 = Color3.fromRGB(220, 220, 255)
+Title.TextSize = 13
+Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = Header
+
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0, 24, 0, 24)
+MinBtn.Position = UDim2.new(1, -30, 0, 4)
+MinBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+MinBtn.Text = "—"
+MinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinBtn.TextSize = 14
+MinBtn.Font = Enum.Font.GothamBold
+MinBtn.Parent = Header
+
+local MinCorner = Instance.new("UICorner")
+MinCorner.CornerRadius = UDim.new(0, 4)
+MinCorner.Parent = MinBtn
+
+-- ============================================
+-- SISTEMA DE ARRASTAR MANUAL (corrige bug)
+-- ============================================
+local dragging = false
+local dragStart, startPos
+
+Header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+       or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = Main.Position
+    end
+end)
+
+Header.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+       or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+       or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        Main.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- ============================================
+-- BOTÃO ON/OFF
+-- ============================================
+local ToggleFrame = Instance.new("Frame")
+ToggleFrame.Name = "ToggleFrame"
+ToggleFrame.Size = UDim2.new(1, -20, 0, 35)
+ToggleFrame.Position = UDim2.new(0, 10, 0, 40)
+ToggleFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+ToggleFrame.BorderSizePixel = 0
+ToggleFrame.Parent = Main
+
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(0, 6)
+ToggleCorner.Parent = ToggleFrame
+
+local ToggleLabel = Instance.new("TextLabel")
+ToggleLabel.Size = UDim2.new(1, -80, 1, 0)
+ToggleLabel.Position = UDim2.new(0, 10, 0, 0)
+ToggleLabel.BackgroundTransparency = 1
+ToggleLabel.Text = "Modo Ajuste"
+ToggleLabel.TextColor3 = Color3.fromRGB(220, 220, 255)
+ToggleLabel.TextSize = 12
+ToggleLabel.Font = Enum.Font.GothamBold
+ToggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+ToggleLabel.Parent = ToggleFrame
+
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0, 55, 0, 25)
+ToggleBtn.Position = UDim2.new(1, -65, 0, 5)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+ToggleBtn.Text = "OFF"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.TextSize = 12
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.Parent = ToggleFrame
+
+local ToggleBtnCorner = Instance.new("UICorner")
+ToggleBtnCorner.CornerRadius = UDim.new(0, 12)
+ToggleBtnCorner.Parent = ToggleBtn
+
+-- ============================================
+-- BOTÕES + e -  (aumentar/diminuir)
+-- ============================================
+local IncreaseBtn = Instance.new("TextButton")
+IncreaseBtn.Name = "IncreaseBtn"
+IncreaseBtn.Size = UDim2.new(0, 90, 0, 40)
+IncreaseBtn.Position = UDim2.new(0, 10, 0, 85)
+IncreaseBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 70)
+IncreaseBtn.Text = "🔼 Aumentar"
+IncreaseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+IncreaseBtn.TextSize = 12
+IncreaseBtn.Font = Enum.Font.GothamBold
+IncreaseBtn.Parent = Main
+
+local IncCorner = Instance.new("UICorner")
+IncCorner.CornerRadius = UDim.new(0, 6)
+IncCorner.Parent = IncreaseBtn
+
+local DecreaseBtn = Instance.new("TextButton")
+DecreaseBtn.Name = "DecreaseBtn"
+DecreaseBtn.Size = UDim2.new(0, 90, 0, 40)
+DecreaseBtn.Position = UDim2.new(1, -100, 0, 85)
+DecreaseBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+DecreaseBtn.Text = "🔽 Diminuir"
+DecreaseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+DecreaseBtn.TextSize = 12
+DecreaseBtn.Font = Enum.Font.GothamBold
+DecreaseBtn.Parent = Main
+
+local DecCorner = Instance.new("UICorner")
+DecCorner.CornerRadius = UDim.new(0, 6)
+DecCorner.Parent = DecreaseBtn
+
+-- Info
+local InfoLabel = Instance.new("TextLabel")
+InfoLabel.Name = "InfoLabel"
+InfoLabel.Size = UDim2.new(1, -20, 0, 40)
+InfoLabel.Position = UDim2.new(0, 10, 0, 132)
+InfoLabel.BackgroundTransparency = 1
+InfoLabel.Text = "Clique em um botão do jogo\npara selecioná-lo"
+InfoLabel.TextColor3 = Color3.fromRGB(150, 150, 170)
+InfoLabel.TextSize = 10
+InfoLabel.Font = Enum.Font.Gotham
+InfoLabel.TextWrapped = true
+InfoLabel.Parent = Main
+
+-- ============================================
+-- LISTA DE ELEMENTOS QUE ESCONDEM AO MINIMIZAR
+-- ============================================
+local hideList = { ToggleFrame, IncreaseBtn, DecreaseBtn, InfoLabel }
+
+-- ============================================
+-- MINIMIZAR (corrigido)
+-- ============================================
+local minimized = false
+local savedSize = Main.Size
+
+MinBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    if minimized then
+        savedSize = Main.Size
+        Main.Size = UDim2.new(0, 210, 0, 32)
+        for _, obj in ipairs(hideList) do
+            obj.Visible = false
+        end
+        MinBtn.Text = "▢"
+    else
+        Main.Size = savedSize
+        for _, obj in ipairs(hideList) do
+            obj.Visible = true
+        end
+        MinBtn.Text = "—"
+    end
+end)
+
+-- ============================================
+-- LÓGICA DE AJUSTE
+-- ============================================
+local adjustMode = false
+local selectedButton = nil
+local selectedStroke = nil
+
+ToggleBtn.MouseButton1Click:Connect(function()
+    adjustMode = not adjustMode
+    if adjustMode then
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 80)
+        ToggleBtn.Text = "ON"
+    else
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        ToggleBtn.Text = "OFF"
+        -- Remove destaque
+        if selectedStroke then selectedStroke:Destroy() end
+        selectedStroke = nil
+        selectedButton = nil
+    end
+end)
+
+-- ============================================
+-- VERIFICA SE O OBJETO PERTENCE AO NOSSO MENU
+-- ============================================
+local function isInOurMenu(obj)
+    local p = obj
+    while p do
+        if p == ScreenGui then return true end
+        p = p.Parent
+    end
+    return false
+end
+
+-- ============================================
+-- SELECIONA BOTÃO DO JOGO COM TOQUE/CLIQUE
+-- ============================================
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not adjustMode then return end
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1
+       and input.UserInputType ~= Enum.UserInputType.Touch then return end
+
+    local pos = input.Position
+    local hits = playerGui:GetGuiObjectsAtPosition(pos.X, pos.Y)
+
+    for _, obj in ipairs(hits) do
+        if (obj:IsA("TextButton") or obj:IsA("ImageButton")
+            or obj:IsA("GuiButton")) and not isInOurMenu(obj) then
+
+            -- Remove destaque anterior
+            if selectedStroke then selectedStroke:Destroy() end
+
+            selectedButton = obj
+            selectedStroke = Instance.new("UIStroke")
+            selectedStroke.Color = Color3.fromRGB(255, 255, 0)
+            selectedStroke.Thickness = 2.5
+            selectedStroke.Name = "AjusteStroke"
+            selectedStroke.Parent = obj
+
+            InfoLabel.Text = "✅ Selecionado:\n" .. obj.Name
+            return
+        end
+    end
+end)
+
+-- ============================================
+-- AUMENTAR (+10% cada clique, mínimo +4px)
+-- ============================================
+IncreaseBtn.MouseButton1Click:Connect(function()
+    if not adjustMode or not selectedButton then
+        InfoLabel.Text = adjustMode and "⚠ Selecione um botão primeiro" or "⚠ Ative o modo ON"
+        return
+    end
+    local s = selectedButton.Size
+    local addX = math.max(4, math.floor(s.X.Offset * 0.1))
+    local addY = math.max(4, math.floor(s.Y.Offset * 0.1))
+    selectedButton.Size = UDim2.new(s.X.Scale, s.X.Offset + addX,
+                                   s.Y.Scale, s.Y.Offset + addY)
+end)
+
+-- ============================================
+-- DIMINUIR (-10% cada clique, mínimo 10px)
+-- ============================================
+DecreaseBtn.MouseButton1Click:Connect(function()
+    if not adjustMode or not selectedButton then
+        InfoLabel.Text = adjustMode and "⚠ Selecione um botão primeiro" or "⚠ Ative o modo ON"
+        return
+    end
+    local s = selectedButton.Size
+    local subX = math.max(4, math.floor(s.X.Offset * 0.1))
+    local subY = math.max(4, math.floor(s.Y.Offset * 0.1))
+    local newX = math.max(10, s.X.Offset - subX)
+    local newY = math.max(10, s.Y.Offset - subY)
+    selectedButton.Size = UDim2.new(s.X.Scale, newX, s.Y.Scale, newY)
+end)
+
+print("✅ Menu Ajustável carregado!")

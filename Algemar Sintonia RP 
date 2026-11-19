@@ -1,25 +1,113 @@
--- SCRIPT INDEPENDENTE: ATALHOS DE ALGEMAR, DEITAR E AUTO ALGEMAR
+-- SCRIPT INDEPENDENTE COM SALVAMENTO, SCROLL, 14 CORES E 7 FORMATOS
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local HUI = LocalPlayer:WaitForChild("PlayerGui")
+local HttpService = game:GetService("HttpService")
 
--- Remove a interface antiga se você executar duas vezes
-if HUI:FindFirstChild("StandaloneAtalhos") then
-    HUI.StandaloneAtalhos:Destroy()
+local FILE_NAME = "AlgemasConfig_V3.json"
+
+local savedData = {
+    menuMin = false,
+    algemaLig = false,
+    algemaTrav = true,
+    autoLig = false,
+    autoTrav = true,
+    autoSpam = false,
+    deitLig = false,
+    deitTrav = true,
+    tracerLig = false,
+    tracerColorRGB = {0, 150, 255}, 
+    tracerShapeId = "", -- Vazio significa sem textura (sólido)
+    posMenu = {0.5, -100, 0.5, -150},
+    posRosa = {0.5, -75, 0.7, 0},
+    posAuto = {0.5, -22, 0.7, 0},
+    posDeit = {0.5, 30, 0.7, 0}
+}
+
+if isfile and readfile then
+    if isfile(FILE_NAME) then
+        local success, result = pcall(function() return HttpService:JSONDecode(readfile(FILE_NAME)) end)
+        if success and result then
+            for k, v in pairs(result) do savedData[k] = v end
+        end
+    end
 end
 
--- Cria a Tela
+local function saveConfig()
+    if writefile then
+        pcall(function() writefile(FILE_NAME, HttpService:JSONEncode(savedData)) end)
+    end
+end
+
+if HUI:FindFirstChild("StandaloneAtalhos") then HUI.StandaloneAtalhos:Destroy() end
+
+-- ================== LÓGICA DO TRACER ==================
+local currentTracerColor = Color3.fromRGB(savedData.tracerColorRGB[1], savedData.tracerColorRGB[2], savedData.tracerColorRGB[3])
+local currentTexture = savedData.tracerShapeId
+
+local function aplicarCorTracer(objeto)
+    if not savedData.tracerLig then return end
+    
+    if objeto:IsA("Trail") or objeto:IsA("Beam") then
+        pcall(function()
+            objeto.Color = ColorSequence.new(currentTracerColor)
+            objeto.LightEmission = 1
+            if objeto.Texture ~= currentTexture then
+                objeto.Texture = currentTexture
+            end
+        end)
+    end
+    
+    if objeto:IsA("Smoke") or objeto:IsA("ParticleEmitter") then
+        local nome = string.lower(objeto.Name)
+        if nome:find("smoke") or nome:find("spark") or nome:find("fx") or nome:find("tiro") or nome:find("rastro") then
+            pcall(function() objeto.Color = ColorSequence.new(currentTracerColor) end)
+        end
+    end
+    
+    if objeto:IsA("BasePart") then
+        local nome = string.lower(objeto.Name)
+        if nome:find("tracer") or nome:find("bullet") or nome:find("tiro") or nome:find("rastro") or nome:find("shot") then
+            pcall(function()
+                objeto.Color = currentTracerColor
+                objeto.Material = Enum.Material.Neon
+                -- Se o usuário escolheu uma textura, aplica na part
+                if currentTexture ~= "" then
+                    local tex = objeto:FindFirstChildOfClass("Texture") or Instance.new("Texture", objeto)
+                    tex.Texture = currentTexture
+                else
+                    for _, filho in ipairs(objeto:GetChildren()) do
+                        if filho:IsA("Texture") or filho:IsA("Decal") then filho:Destroy() end
+                    end
+                end
+            end)
+        end
+    end
+end
+
+workspace.DescendantAdded:Connect(aplicarCorTracer)
+
+local function atualizarTudo()
+    if not savedData.tracerLig then return end
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        aplicarCorTracer(obj)
+    end
+end
+
+if savedData.tracerLig then task.spawn(atualizarTudo) end
+
+-- ================== INTERFACE ==================
 local Gui = Instance.new("ScreenGui")
 Gui.Name = "StandaloneAtalhos"
 Gui.ResetOnSpawn = false
 Gui.IgnoreGuiInset = true
 Gui.Parent = HUI
 
--- Painel de Controle (Aumentei a altura para caber o novo botão)
+-- O painel agora tem um tamanho fixo mas conteúdo rolável
 local Painel = Instance.new("Frame")
 Painel.Name = "PainelAtalhos"
-Painel.Size = UDim2.new(0, 180, 0, 180) 
-Painel.Position = UDim2.new(0.5, -90, 0.5, -90)
+Painel.Size = UDim2.new(0, 200, 0, 350) 
+Painel.Position = UDim2.new(savedData.posMenu[1], savedData.posMenu[2], savedData.posMenu[3], savedData.posMenu[4])
 Painel.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 Painel.BorderSizePixel = 0
 Painel.Active = true
@@ -27,6 +115,13 @@ Painel.Draggable = true
 Painel.ClipsDescendants = true
 Painel.Parent = Gui
 Instance.new("UICorner", Painel).CornerRadius = UDim.new(0, 8)
+
+Painel:GetPropertyChangedSignal("Position"):Connect(function()
+    if not savedData.menuMin then
+        savedData.posMenu = {Painel.Position.X.Scale, Painel.Position.X.Offset, Painel.Position.Y.Scale, Painel.Position.Y.Offset}
+        saveConfig()
+    end
+end)
 
 local Titulo = Instance.new("TextLabel")
 Titulo.Size = UDim2.new(1, -30, 0, 24)
@@ -36,10 +131,10 @@ Titulo.TextColor3 = Color3.new(1, 1, 1)
 Titulo.Font = Enum.Font.GothamBold
 Titulo.TextSize = 11
 Titulo.TextXAlignment = Enum.TextXAlignment.Left
+Titulo.ZIndex = 5
 Titulo.Parent = Painel
 Instance.new("UICorner", Titulo).CornerRadius = UDim.new(0, 8)
 
--- Botão de Minimizar
 local MinimizeBtn = Instance.new("TextButton")
 MinimizeBtn.Size = UDim2.new(0, 24, 0, 24)
 MinimizeBtn.Position = UDim2.new(1, -24, 0, 0)
@@ -48,102 +143,232 @@ MinimizeBtn.Text = "-"
 MinimizeBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
 MinimizeBtn.Font = Enum.Font.GothamBold
 MinimizeBtn.TextSize = 14
-MinimizeBtn.ZIndex = 2
+MinimizeBtn.ZIndex = 6
 MinimizeBtn.Parent = Painel
 Instance.new("UICorner", MinimizeBtn).CornerRadius = UDim.new(0, 6)
 
--- ================== SEÇÃO ALGEMAR ==================
-local btnToggle = Instance.new("TextButton")
-btnToggle.Size = UDim2.new(1, -10, 0, 22)
-btnToggle.Position = UDim2.new(0, 5, 0, 28)
-btnToggle.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-btnToggle.Text = "ALGEMA: OFF ❌"
-btnToggle.TextColor3 = Color3.new(1, 1, 1)
-btnToggle.Font = Enum.Font.GothamBold
-btnToggle.TextSize = 10
-btnToggle.Parent = Painel
-Instance.new("UICorner", btnToggle).CornerRadius = UDim.new(0, 4)
+-- ÁREA ROLÁVEL (SCROLL)
+local Scroll = Instance.new("ScrollingFrame")
+Scroll.Size = UDim2.new(1, 0, 1, -24)
+Scroll.Position = UDim2.new(0, 0, 0, 24)
+Scroll.BackgroundTransparency = 1
+Scroll.BorderSizePixel = 0
+Scroll.ScrollBarThickness = 4
+Scroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 150)
+Scroll.CanvasSize = UDim2.new(0, 0, 0, 550) -- Altura total do conteúdo
+Scroll.Parent = Painel
 
-local btnTrava = Instance.new("TextButton")
-btnTrava.Size = UDim2.new(1, -10, 0, 22)
-btnTrava.Position = UDim2.new(0, 5, 0, 52)
-btnTrava.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-btnTrava.Text = "TRAVAR ALGEMA: OFF 🔓"
-btnTrava.TextColor3 = Color3.new(1, 1, 1)
-btnTrava.Font = Enum.Font.GothamBold
-btnTrava.TextSize = 10
-btnTrava.Parent = Painel
-Instance.new("UICorner", btnTrava).CornerRadius = UDim.new(0, 4)
+local UIList = Instance.new("UIListLayout", Scroll)
+UIList.Padding = UDim.new(0, 4)
+UIList.SortOrder = Enum.SortOrder.LayoutOrder
 
--- NOVO BOTÃO: AUTO ALGEMAR
-local btnAutoAlgemar = Instance.new("TextButton")
-btnAutoAlgemar.Size = UDim2.new(1, -10, 0, 22)
-btnAutoAlgemar.Position = UDim2.new(0, 5, 0, 76)
-btnAutoAlgemar.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-btnAutoAlgemar.Text = "AUTO ALGEMAR: OFF ❌"
-btnAutoAlgemar.TextColor3 = Color3.new(1, 1, 1)
-btnAutoAlgemar.Font = Enum.Font.GothamBold
-btnAutoAlgemar.TextSize = 10
-btnAutoAlgemar.Parent = Painel
-Instance.new("UICorner", btnAutoAlgemar).CornerRadius = UDim.new(0, 4)
+-- Função auxiliar para criar botões no Scroll
+local function criarBotao(texto, cor, ordem, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -10, 0, 22)
+    btn.BackgroundColor3 = cor
+    btn.Text = texto
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 10
+    btn.LayoutOrder = ordem
+    btn.Parent = Scroll
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+    btn.MouseButton1Click:Connect(callback)
+    return btn
+end
 
--- ================== SEÇÃO DEITAR ==================
-local btnDeitarToggle = Instance.new("TextButton")
-btnDeitarToggle.Size = UDim2.new(1, -10, 0, 22)
-btnDeitarToggle.Position = UDim2.new(0, 5, 0, 104)
-btnDeitarToggle.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-btnDeitarToggle.Text = "DEITAR: OFF ❌"
-btnDeitarToggle.TextColor3 = Color3.new(1, 1, 1)
-btnDeitarToggle.Font = Enum.Font.GothamBold
-btnDeitarToggle.TextSize = 10
-btnDeitarToggle.Parent = Painel
-Instance.new("UICorner", btnDeitarToggle).CornerRadius = UDim.new(0, 4)
+local function criarTitulo(texto, ordem)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -10, 0, 20)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = texto
+    lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 9
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.LayoutOrder = ordem
+    lbl.Parent = Scroll
+end
 
-local btnDeitarTrava = Instance.new("TextButton")
-btnDeitarTrava.Size = UDim2.new(1, -10, 0, 22)
-btnDeitarTrava.Position = UDim2.new(0, 5, 0, 128)
-btnDeitarTrava.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-btnDeitarTrava.Text = "TRAVAR DEITAR: OFF 🔓"
-btnDeitarTrava.TextColor3 = Color3.new(1, 1, 1)
-btnDeitarTrava.Font = Enum.Font.GothamBold
-btnDeitarTrava.TextSize = 10
-btnDeitarTrava.Parent = Painel
-Instance.new("UICorner", btnDeitarTrava).CornerRadius = UDim.new(0, 4)
+-- SEÇÃO ALGEMAS
+criarTitulo("ALGEMAS", 1)
+local btnToggle = criarBotao("ALGEMA: OFF ❌", Color3.fromRGB(200, 50, 50), 2, function() end)
+local btnTrava = criarBotao("TRAVAR ALGEMA: OFF 🔓", Color3.fromRGB(70, 70, 70), 3, function() end)
+
+-- SEÇÃO AUTO ALGEMAR
+criarTitulo("AUTO ALGEMAR", 4)
+local btnToggleAuto = criarBotao("ATALHO AUTO: OFF ❌", Color3.fromRGB(200, 50, 50), 5, function() end)
+local btnTravaAuto = criarBotao("TRAVAR AUTO: OFF 🔓", Color3.fromRGB(70, 70, 70), 6, function() end)
+
+-- SEÇÃO DEITAR
+criarTitulo("DEITAR", 7)
+local btnDeitarToggle = criarBotao("DEITAR: OFF ❌", Color3.fromRGB(200, 50, 50), 8, function() end)
+local btnDeitarTrava = criarBotao("TRAVAR DEITAR: OFF 🔓", Color3.fromRGB(70, 70, 70), 9, function() end)
+
+-- ================== CORES DO TRACER ==================
+criarTitulo("COR DO TRAÇANTE (14 CORES)", 10)
+
+local cores = {
+    -- 6 originais
+    {Cor = Color3.fromRGB(0, 150, 255), RGB = {0, 150, 255}}, -- Azul
+    {Cor = Color3.fromRGB(255, 50, 50), RGB = {255, 50, 50}}, -- Vermelho
+    {Cor = Color3.fromRGB(0, 255, 100), RGB = {0, 255, 100}}, -- Verde
+    {Cor = Color3.fromRGB(255, 105, 180), RGB = {255, 105, 180}}, -- Rosa
+    {Cor = Color3.fromRGB(138, 43, 226), RGB = {138, 43, 226}}, -- Roxo
+    {Cor = Color3.fromRGB(255, 255, 0), RGB = {255, 255, 0}}, -- Amarelo
+    -- 8 novas
+    {Cor = Color3.fromRGB(0, 255, 255), RGB = {0, 255, 255}}, -- Ciano
+    {Cor = Color3.fromRGB(255, 165, 0), RGB = {255, 165, 0}}, -- Laranja
+    {Cor = Color3.fromRGB(255, 215, 0), RGB = {255, 215, 0}}, -- Dourado
+    {Cor = Color3.fromRGB(255, 255, 255), RGB = {255, 255, 255}}, -- Branco
+    {Cor = Color3.fromRGB(0, 0, 0), RGB = {0, 0, 0}}, -- Preto
+    {Cor = Color3.fromRGB(139, 69, 19), RGB = {139, 69, 19}}, -- Marrom
+    {Cor = Color3.fromRGB(50, 205, 50), RGB = {50, 205, 50}}, -- Verde Limão
+    {Cor = Color3.fromRGB(255, 0, 255), RGB = {255, 0, 255}}  -- Magenta
+}
+
+local CoresFrame = Instance.new("Frame")
+CoresFrame.Size = UDim2.new(1, -10, 0, 80)
+CoresFrame.BackgroundTransparency = 1
+CoresFrame.LayoutOrder = 11
+CoresFrame.Parent = Scroll
+
+local GridCores = Instance.new("UIGridLayout", CoresFrame)
+GridCores.CellSize = UDim2.new(0.12, 0, 0, 22)
+GridCores.CellPadding = UDim2.new(0.01, 0, 0, 4)
+GridCores.SortOrder = Enum.SortOrder.LayoutOrder
+
+local btnCores = {}
+for i, corInfo in ipairs(cores) do
+    local btn = Instance.new("TextButton")
+    btn.BackgroundColor3 = corInfo.Cor
+    btn.Text = ""
+    btn.BorderSizePixel = 1
+    btn.BorderColor3 = Color3.new(0,0,0)
+    btn.LayoutOrder = i
+    btn.Parent = CoresFrame
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+    
+    btn.MouseButton1Click:Connect(function()
+        savedData.tracerLig = true
+        savedData.tracerColorRGB = corInfo.RGB
+        currentTracerColor = corInfo.Cor
+        atualizarTudo()
+        saveConfig()
+    end)
+end
+
+-- ================== FORMATOS DO TRACER ==================
+criarTitulo("FORMATO DA BALA (7 OPÇÕES)", 12)
+
+-- IDs de texturas do Roblox para os formatos
+local formatos = {
+    {Nome = "Sólido", Id = ""}, 
+    {Nome = "Redondo", Id = "rbxassetid://243660364"}, -- Fumaça redonda
+    {Nome = "Quadrado", Id = "rbxassetid://5000060950"}, -- Quadrado pixelado
+    {Nome = "Faísca", Id = "rbxassetid://243098098"}, -- Faísca/irregular
+    {Nome = "Dobradiças", Id = "rbxassetid://1327842481"}, -- Tracejado/Jagged
+    {Nome = "Sombra", Id = "rbxassetid://5011494531"}, -- Sombra/Fumê
+    {Nome = "Listrado", Id = "rbxassetid://5462115103"} -- Linhas paralelas
+}
+
+local FormatosFrame = Instance.new("Frame")
+FormatosFrame.Size = UDim2.new(1, -10, 0, 66)
+FormatosFrame.BackgroundTransparency = 1
+FormatosFrame.LayoutOrder = 13
+FormatosFrame.Parent = Scroll
+
+local GridFormatos = Instance.new("UIGridLayout", FormatosFrame)
+GridFormatos.CellSize = UDim2.new(0.3, 0, 0, 20)
+GridFormatos.CellPadding = UDim2.new(0.02, 0, 0, 3)
+GridFormatos.SortOrder = Enum.SortOrder.LayoutOrder
+
+for i, formaInfo in ipairs(formatos) do
+    local btn = Instance.new("TextButton")
+    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+    btn.Text = formaInfo.Nome
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 9
+    btn.LayoutOrder = i
+    btn.Parent = FormatosFrame
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+    
+    btn.MouseButton1Click:Connect(function()
+        savedData.tracerLig = true
+        savedData.tracerShapeId = formaInfo.Id
+        currentTexture = formaInfo.Id
+        atualizarTudo()
+        saveConfig()
+    end)
+end
+
+-- Botão para desligar o tracer (LayoutOrder 14)
+local btnTracerOff = criarBotao("DESLIGAR TRACER", Color3.fromRGB(70, 70, 70), 14, function()
+    savedData.tracerLig = false
+    saveConfig()
+    HUI:SetCore("SendNotification", {
+        Title = "Tracer Desligado",
+        Text = "Reentre no servidor para voltar ao normal.",
+        Duration = 4
+    })
+end)
 
 -- ================== BOTÕES FLUTUANTES ==================
+-- (Mantidos iguais ao código anterior para não perder o que você já tinha)
 local btnRosa = Instance.new("TextButton")
 btnRosa.Name = "BtnRosaAlgema"
 btnRosa.Size = UDim2.new(0, 45, 0, 45)
-btnRosa.Position = UDim2.new(0.5, -50, 0.7, 0)
+btnRosa.Position = UDim2.new(savedData.posRosa[1], savedData.posRosa[2], savedData.posRosa[3], savedData.posRosa[4])
 btnRosa.BackgroundColor3 = Color3.fromRGB(255, 105, 180)
 btnRosa.Text = "🔗"
 btnRosa.TextSize = 18
-btnRosa.Visible = false
-btnRosa.Active = true
-btnRosa.Draggable = false
-btnRosa.ZIndex = 150
+btnRosa.Visible = savedData.algemaLig
+btnRosa.Draggable = not savedData.algemaTrav
 btnRosa.Parent = Gui
 Instance.new("UICorner", btnRosa).CornerRadius = UDim.new(1, 0)
+btnRosa:GetPropertyChangedSignal("Position"):Connect(function()
+    savedData.posRosa = {btnRosa.Position.X.Scale, btnRosa.Position.X.Offset, btnRosa.Position.Y.Scale, btnRosa.Position.Y.Offset}
+    saveConfig()
+end)
+
+local btnAutoAlgemaFlutuante = Instance.new("TextButton")
+btnAutoAlgemaFlutuante.Name = "BtnAutoAlgema"
+btnAutoAlgemaFlutuante.Size = UDim2.new(0, 45, 0, 45)
+btnAutoAlgemaFlutuante.Position = UDim2.new(savedData.posAuto[1], savedData.posAuto[2], savedData.posAuto[3], savedData.posAuto[4])
+btnAutoAlgemaFlutuante.BackgroundColor3 = savedData.autoSpam and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(150, 0, 0)
+btnAutoAlgemaFlutuante.Text = "⚡"
+btnAutoAlgemaFlutuante.TextSize = 18
+btnAutoAlgemaFlutuante.Visible = savedData.autoLig
+btnAutoAlgemaFlutuante.Draggable = not savedData.autoTrav
+btnAutoAlgemaFlutuante.Parent = Gui
+Instance.new("UICorner", btnAutoAlgemaFlutuante).CornerRadius = UDim.new(1, 0)
+btnAutoAlgemaFlutuante:GetPropertyChangedSignal("Position"):Connect(function()
+    savedData.posAuto = {btnAutoAlgemaFlutuante.Position.X.Scale, btnAutoAlgemaFlutuante.Position.X.Offset, btnAutoAlgemaFlutuante.Position.Y.Scale, btnAutoAlgemaFlutuante.Position.Y.Offset}
+    saveConfig()
+end)
 
 local btnDeitarFlutuante = Instance.new("TextButton")
 btnDeitarFlutuante.Name = "BtnDeitarFlutuante"
 btnDeitarFlutuante.Size = UDim2.new(0, 45, 0, 45)
-btnDeitarFlutuante.Position = UDim2.new(0.5, 5, 0.7, 0)
+btnDeitarFlutuante.Position = UDim2.new(savedData.posDeit[1], savedData.posDeit[2], savedData.posDeit[3], savedData.posDeit[4])
 btnDeitarFlutuante.BackgroundColor3 = Color3.fromRGB(138, 43, 226)
 btnDeitarFlutuante.Text = "🛌"
 btnDeitarFlutuante.TextSize = 18
-btnDeitarFlutuante.Visible = false
-btnDeitarFlutuante.Active = true
-btnDeitarFlutuante.Draggable = false
-btnDeitarFlutuante.ZIndex = 150
+btnDeitarFlutuante.Visible = savedData.deitLig
+btnDeitarFlutuante.Draggable = not savedData.deitTrav
 btnDeitarFlutuante.Parent = Gui
 Instance.new("UICorner", btnDeitarFlutuante).CornerRadius = UDim.new(1, 0)
+btnDeitarFlutuante:GetPropertyChangedSignal("Position"):Connect(function()
+    savedData.posDeit = {btnDeitarFlutuante.Position.X.Scale, btnDeitarFlutuante.Position.X.Offset, btnDeitarFlutuante.Position.Y.Scale, btnDeitarFlutuante.Position.Y.Offset}
+    saveConfig()
+end)
 
--- ================== FUNÇÕES DE EXECUÇÃO ==================
--- Função base para puxar a algema (usada tanto no botão manual quanto no automático)
+-- ================== FUNÇÕES E LÓGICA ==================
 local function executarAlgemar()
     pcall(function()
-        local currentGui = LocalPlayer:WaitForChild("PlayerGui")
+        local currentGui = LocalPlayer.PlayerGui
         local executed = false
         for _, gui in ipairs(currentGui:GetChildren()) do
             if gui:IsA("ScreenGui") then
@@ -175,7 +400,7 @@ end
 
 local function executarDeitar()
     pcall(function()
-        local currentGui = LocalPlayer:WaitForChild("PlayerGui")
+        local currentGui = LocalPlayer.PlayerGui
         local executed = false
         for _, gui in ipairs(currentGui:GetChildren()) do
             if gui:IsA("ScreenGui") then
@@ -205,89 +430,109 @@ local function executarDeitar()
     end)
 end
 
--- ================== LÓGICA DE MINIMIZAR ==================
-local isMinimized = false
-MinimizeBtn.MouseButton1Click:Connect(function()
-    isMinimized = not isMinimized
-    if isMinimized then
+-- Lógica Minimizar
+local function atualizarMenuVisual()
+    if savedData.menuMin then
         Painel.Size = UDim2.new(0, 30, 0, 30)
         Painel.Draggable = false
         MinimizeBtn.Size = UDim2.new(1, 0, 1, 0)
         MinimizeBtn.Position = UDim2.new(0, 0, 0, 0)
         MinimizeBtn.Text = "+"
+        Scroll.Visible = false
         Titulo.Visible = false
-        btnToggle.Visible = false
-        btnTrava.Visible = false
-        btnAutoAlgemar.Visible = false
-        btnDeitarToggle.Visible = false
-        btnDeitarTrava.Visible = false
     else
-        Painel.Size = UDim2.new(0, 180, 0, 180)
+        Painel.Size = UDim2.new(0, 200, 0, 350)
         Painel.Draggable = true
         MinimizeBtn.Size = UDim2.new(0, 24, 0, 24)
         MinimizeBtn.Position = UDim2.new(1, -24, 0, 0)
         MinimizeBtn.Text = "-"
+        Scroll.Visible = true
         Titulo.Visible = true
-        btnToggle.Visible = true
-        btnTrava.Visible = true
-        btnAutoAlgemar.Visible = true
-        btnDeitarToggle.Visible = true
-        btnDeitarTrava.Visible = true
     end
+end
+
+MinimizeBtn.MouseButton1Click:Connect(function()
+    savedData.menuMin = not savedData.menuMin
+    atualizarMenuVisual()
+    saveConfig()
+end)
+atualizarMenuVisual()
+
+-- Lógica dos botões do menu
+btnToggle.MouseButton1Click:Connect(function()
+    savedData.algemaLig = not savedData.algemaLig
+    btnRosa.Visible = savedData.algemaLig
+    btnToggle.Text = savedData.algemaLig and "ALGEMA: ON ✔️" or "ALGEMA: OFF ❌"
+    btnToggle.BackgroundColor3 = savedData.algemaLig and Color3.fromRGB(40, 167, 69) or Color3.fromRGB(200, 50, 50)
+    saveConfig()
 end)
 
--- ================== LÓGICA DOS BOTÕES ==================
--- Algemar Manual
-local ligado = false
-local travado = false
-btnToggle.MouseButton1Click:Connect(function()
-    ligado = not ligado
-    btnRosa.Visible = ligado
-    btnToggle.Text = ligado and "ALGEMA: ON ✔️" or "ALGEMA: OFF ❌"
-    btnToggle.BackgroundColor3 = ligado and Color3.fromRGB(40, 167, 69) or Color3.fromRGB(200, 50, 50)
-end)
 btnTrava.MouseButton1Click:Connect(function()
-    travado = not travado
-    btnRosa.Draggable = not travado
-    btnTrava.Text = travado and "TRAVAR ALGEMA: ON 🔒" or "TRAVAR ALGEMA: OFF 🔓"
-    btnTrava.BackgroundColor3 = travado and Color3.fromRGB(217, 130, 43) or Color3.fromRGB(70, 70, 70)
+    savedData.algemaTrav = not savedData.algemaTrav
+    btnRosa.Draggable = not savedData.algemaTrav
+    btnTrava.Text = savedData.algemaTrav and "TRAVAR ALGEMA: ON 🔒" or "TRAVAR ALGEMA: OFF 🔓"
+    btnTrava.BackgroundColor3 = savedData.algemaTrav and Color3.fromRGB(217, 130, 43) or Color3.fromRGB(70, 70, 70)
+    saveConfig()
 end)
 btnRosa.MouseButton1Click:Connect(executarAlgemar)
 
--- AUTO ALGEMAR (Loop)
-local autoAlgemarLigado = false
-btnAutoAlgemar.MouseButton1Click:Connect(function()
-    autoAlgemarLigado = not autoAlgemarLigado
-    if autoAlgemarLigado then
-        btnAutoAlgemar.Text = "AUTO ALGEMAR: ON 🔁"
-        btnAutoAlgemar.BackgroundColor3 = Color3.fromRGB(0, 160, 100)
-        -- Inicia o loop em segundo plano
-        task.spawn(function()
-            while autoAlgemarLigado do
-                executarAlgemar()
-                task.wait(0.15) -- Delay para não travar o celular
-            end
-        end)
-    else
-        btnAutoAlgemar.Text = "AUTO ALGEMAR: OFF ❌"
-        btnAutoAlgemar.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-        -- O loop vai parar sozinho na próxima checagem do "while"
+btnToggleAuto.MouseButton1Click:Connect(function()
+    savedData.autoLig = not savedData.autoLig
+    btnAutoAlgemaFlutuante.Visible = savedData.autoLig
+    btnToggleAuto.Text = savedData.autoLig and "ATALHO AUTO: ON ✔️" or "ATALHO AUTO: OFF ❌"
+    btnToggleAuto.BackgroundColor3 = savedData.autoLig and Color3.fromRGB(40, 167, 69) or Color3.fromRGB(200, 50, 50)
+    if not savedData.autoLig then
+        savedData.autoSpam = false
+        btnAutoAlgemaFlutuante.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
     end
+    saveConfig()
 end)
 
--- Deitar
-local deitarLigado = false
-local deitarTravado = false
-btnDeitarToggle.MouseButton1Click:Connect(function()
-    deitarLigado = not deitarLigado
-    btnDeitarFlutuante.Visible = deitarLigado
-    btnDeitarToggle.Text = deitarLigado and "DEITAR: ON ✔️" or "DEITAR: OFF ❌"
-    btnDeitarToggle.BackgroundColor3 = deitarLigado and Color3.fromRGB(40, 167, 69) or Color3.fromRGB(200, 50, 50)
+btnTravaAuto.MouseButton1Click:Connect(function()
+    savedData.autoTrav = not savedData.autoTrav
+    btnAutoAlgemaFlutuante.Draggable = not savedData.autoTrav
+    btnTravaAuto.Text = savedData.autoTrav and "TRAVAR AUTO: ON 🔒" or "TRAVAR AUTO: OFF 🔓"
+    btnTravaAuto.BackgroundColor3 = savedData.autoTrav and Color3.fromRGB(217, 130, 43) or Color3.fromRGB(70, 70, 70)
+    saveConfig()
 end)
+
+local function iniciarSpamAuto()
+    if savedData.autoSpam then
+        btnAutoAlgemaFlutuante.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+        task.spawn(function()
+            while savedData.autoSpam do
+                executarAlgemar()
+                task.wait(0.15)
+            end
+        end)
+    end
+end
+
+btnAutoAlgemaFlutuante.MouseButton1Click:Connect(function()
+    savedData.autoSpam = not savedData.autoSpam
+    if savedData.autoSpam then
+        btnAutoAlgemaFlutuante.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+        iniciarSpamAuto()
+    else
+        btnAutoAlgemaFlutuante.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+    end
+    saveConfig()
+end)
+iniciarSpamAuto()
+
+btnDeitarToggle.MouseButton1Click:Connect(function()
+    savedData.deitLig = not savedData.deitLig
+    btnDeitarFlutuante.Visible = savedData.deitLig
+    btnDeitarToggle.Text = savedData.deitLig and "DEITAR: ON ✔️" or "DEITAR: OFF ❌"
+    btnDeitarToggle.BackgroundColor3 = savedData.deitLig and Color3.fromRGB(40, 167, 69) or Color3.fromRGB(200, 50, 50)
+    saveConfig()
+end)
+
 btnDeitarTrava.MouseButton1Click:Connect(function()
-    deitarTravado = not deitarTravado
-    btnDeitarFlutuante.Draggable = not deitarTravado
-    btnDeitarTrava.Text = deitarTravado and "TRAVAR DEITAR: ON 🔒" or "TRAVAR DEITAR: OFF 🔓"
-    btnDeitarTrava.BackgroundColor3 = deitarTravado and Color3.fromRGB(217, 130, 43) or Color3.fromRGB(70, 70, 70)
+    savedData.deitTrav = not savedData.deitTrav
+    btnDeitarFlutuante.Draggable = not savedData.deitTrav
+    btnDeitarTrava.Text = savedData.deitTrav and "TRAVAR DEITAR: ON 🔒" or "TRAVAR DEITAR: OFF 🔓"
+    btnDeitarTrava.BackgroundColor3 = savedData.deitTrav and Color3.fromRGB(217, 130, 43) or Color3.fromRGB(70, 70, 70)
+    saveConfig()
 end)
 btnDeitarFlutuante.MouseButton1Click:Connect(executarDeitar)

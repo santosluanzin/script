@@ -11,7 +11,6 @@ local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 local HttpService = game:GetService("HttpService")
 
--- ✅ TABELA CONFIG MOVIDA PARA CÁ (Antes de ser usada pela função abaixo)
 local Config = {
     Enabled=false, AimPart="Neck", FOV=25, FOV_Sticky=45, MaxDistance=100,
     Smoothness=0.15, Prediction=0.08, Locked=false, IgnoreTeam=true,
@@ -40,9 +39,9 @@ pcall(function()
                 local c = LocalPlayer.Character
                 if c then
                     local h = c:FindFirstChildOfClass("Humanoid")
-                    if h then 
+                    if h then
                         local yOffset = Config.RaiseCamera and Config.CameraRaiseOffset or 0
-                        h.CameraOffset = Vector3.new(Config.CameraOffsetRight, yOffset, 0) 
+                        h.CameraOffset = Vector3.new(Config.CameraOffsetRight, yOffset, 0)
                     end
                 end
             end)
@@ -69,23 +68,23 @@ local function IsRobloxFriend(tp)
     return FriendCache[tp.UserId]
 end
 
--- ===== FUNÇÃO CHAVE: Só conta se a arma estiver equipada (no Character) e visível =====
+-- ===== FUNÇÃO CHAVE: Detecta arma equipada assim que o player puxa/equipa =====
 local function HasWeaponInHand(player)
     if not player or not player.Character then return false end
     local char = player.Character
-    local tool = char:FindFirstChildOfClass("Tool")
-    
-    if not tool then return false end
-    if tool.Enabled == false then return false end
-    
-    local handle = tool:FindFirstChild("Handle")
-    if not handle or not handle:IsA("BasePart") then return false end
-    
-    if handle.Transparency >= 0.9 or handle.LocalTransparencyModifier >= 0.9 then 
-        return false 
+    for _, child in ipairs(char:GetChildren()) do
+        if child:IsA("Tool") and child.Enabled ~= false then
+            local handle = child:FindFirstChild("Handle")
+            if handle and handle:IsA("BasePart") then
+                if handle.Transparency < 0.95 then
+                    return true
+                end
+            else
+                return true
+            end
+        end
     end
-    
-    return true
+    return false
 end
 
 local function IsInSafeZone(player)
@@ -274,7 +273,7 @@ SndRadBox.Position=UDim2.new(0,80,0,1175)
 MakeLabel("Snd.Shooter:",1175,90) local SndShooterBox=MakeBox(1175,Config.SoundShooterDist)
 SndShooterBox.Position=UDim2.new(0,170,0,1175)
 
-local ArmedLockBtn = MakeBtn("TRAVAR SÓ ARMADOS: OFF", 1215, Color3.fromRGB(200,50,50))
+local ArmedLockBtn = MakeBtn("SÓ GRUDA ARMADO: OFF", 1215, Color3.fromRGB(200,50,50))
 local ArmedLabelBtn = MakeBtn("MOSTRAR 'ARMADO': ON", 1255, Color3.fromRGB(50,200,50))
 MakeLabel("Tempo Retorno (s):",1295,130) local ReleaseTimeBox=MakeBox(1295,Config.ManualReleaseTime)
 
@@ -869,7 +868,7 @@ UserInputService.InputChanged:Connect(function(i, gp)
             if dragAccum >= Config.FOV_Sticky then
                 ManualRelease[CurrentTarget] = tick() + (Config.ManualReleaseTime or 2.0)
                 DamageThreats[CurrentTarget] = nil
-                CurrentTarget = nil -- FORÇA A TROCA IMEDIATA PARA OUTRO ALVO
+                CurrentTarget = nil
                 dragAccum = 0
             end
         end
@@ -882,7 +881,7 @@ TargetHighlight.FillTransparency=0.55 TargetHighlight.OutlineColor=Color3.fromRG
 TargetHighlight.OutlineTransparency=0 TargetHighlight.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
 
 -- ======================================================
--- LABELS "ARMADO" POR PLAYER (respeita FOV + Max Distance + ARMA NA MÃO)
+-- LABELS "ARMADO" POR PLAYER
 -- ======================================================
 local ArmedLabels = {}
 
@@ -1070,8 +1069,7 @@ local function FindNearestShooterByPosition(sourcePos, maxSourceDist, maxShooter
                 local score = 0
                 if sourcePos then
                     local dToSource = (hrp.Position - sourcePos).Magnitude
-                    if dToSource > maxShooterDist then
-                    else
+                    if dToSource <= maxShooterDist then
                         score = score - dToSource * 3
                     end
                 end
@@ -1293,38 +1291,48 @@ local function GetThreatTarget()
 end
 
 -- ======================================================
--- TARGETING: AIMBOT NORMAL + PRIORIDADE PARA ARMADOS
+-- TARGETING: GRUDA ASSIM QUE O PLAYER ESTIVER COM ARMA
 -- ======================================================
 local function GetTarget()
     local t, s = GetThreatTarget()
     if t then return t, s end
 
-    -- 1º: Se "TRAVAR SÓ ARMADOS" estiver ON, procura primeiro armado (sticky)
     if Config.ArmedLockEnabled then
+        -- 1. Se o alvo atual estiver armado e dentro do FOV_Sticky, mantém grudado nele
         if CurrentTarget and IsTargetValid(CurrentTarget) and not IsManuallyReleased(CurrentTarget) and HasWeaponInHand(CurrentTarget) then
             local d, on = GetScreenDistanceToPlayer(CurrentTarget)
-            if on and d <= Config.FOV_Sticky then return CurrentTarget, "armed_sticky" end
-        end
-        -- Se o alvo atual foi solto, varre TODOS os players atrás de QUALQUER armado no FOV instantaneamente
-        local bestArmed, bestArmedD = nil, Config.FOV
-        for _, p in pairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and IsTargetValid(p) and not IsManuallyReleased(p) and HasWeaponInHand(p) then
-                local d, on = GetScreenDistanceToPlayer(p)
-                if on and d < bestArmedD then bestArmedD = d bestArmed = p end
+            if on and d <= Config.FOV_Sticky then
+                return CurrentTarget, "armed_sticky"
             end
         end
-        if bestArmed then return bestArmed, "armed" end
+
+        -- 2. Varre imediatamente todos os players com arma (dentro de FOV_Sticky para pegar o mais próximo da mira assim que puxar arma)
+        local bestArmed, bestArmedD = nil, Config.FOV_Sticky
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and IsTargetValid(p) and not IsManuallyReleased(p) and HasWeaponInHand(p) then
+                local d, on = GetScreenDistanceToPlayer(p)
+                if on and d <= bestArmedD then
+                    bestArmedD = d
+                    bestArmed = p
+                end
+            end
+        end
+        if bestArmed then
+            return bestArmed, "armed"
+        end
+
+        -- Com "Só gruda armado" ativo, não gruda em quem está sem arma
+        return nil, nil
     end
 
-    -- 2º: Comportamento normal do aimbot (sticky)
+    -- Comportamento normal (quando "Só gruda armado" está OFF)
     if CurrentTarget and IsTargetValid(CurrentTarget) and not IsManuallyReleased(CurrentTarget) then
         local d, on = GetScreenDistanceToPlayer(CurrentTarget)
         if on and d <= Config.FOV_Sticky then return CurrentTarget, "sticky" end
     end
 
-    -- 3º: Comportamento normal do aimbot (FOV)
     local best, bestD = nil, Config.FOV
-    for _, p in pairs(Players:GetPlayers()) do
+    for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and IsTargetValid(p) and not IsManuallyReleased(p) then
             local d, on = GetScreenDistanceToPlayer(p)
             if on and d < bestD then bestD = d best = p end
@@ -1372,16 +1380,15 @@ RunService.RenderStepped:Connect(function()
     if not targetPlayer then
         CurrentTarget = nil
         DestroyLockRing()
-        TargetInfo.Text = Config.Enabled and "Procurando Inimigo..." or "Aimbot OFF (Vigiando...)"
+        TargetInfo.Text = Config.Enabled and (Config.ArmedLockEnabled and "Aguardando Alvo Armado..." or "Procurando Inimigo...") or "Aimbot OFF (Vigiando...)"
         TargetInfo.TextColor3 = Config.Enabled and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(150, 150, 150)
         return
     end
 
     CurrentTarget = targetPlayer
     UpdateLockRing(targetPlayer)
-    
+
     local d3 = math.floor(GetPlayerDistance3D(targetPlayer))
-    local d = GetScreenDistanceToPlayer(targetPlayer)
 
     if Config.Enabled then
         if source == "damage" then
@@ -1576,7 +1583,7 @@ function UpdateVisuals()
     AutoPromptBtn.Visible=Config.AutoPromptEnabled
     AutoPromptBtn.Position=UDim2.new(Config.PromptBtnX,0,Config.PromptBtnY,0)
     ArmedLockBtn.BackgroundColor3 = Config.ArmedLockEnabled and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
-    ArmedLockBtn.Text = "TRAVAR SÓ ARMADOS: " .. (Config.ArmedLockEnabled and "ON" or "OFF")
+    ArmedLockBtn.Text = "SÓ GRUDA ARMADO: " .. (Config.ArmedLockEnabled and "ON" or "OFF")
     ArmedLabelBtn.BackgroundColor3 = Config.ShowArmedLabel and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)
     ArmedLabelBtn.Text = "MOSTRAR 'ARMADO': " .. (Config.ShowArmedLabel and "ON" or "OFF")
     ReleaseTimeBox.Text=tostring(Config.ManualReleaseTime)
@@ -1609,6 +1616,7 @@ DamageDetectBtn.MouseButton1Click:Connect(function() Config.DamageDetectEnabled=
 
 ArmedLockBtn.MouseButton1Click:Connect(function()
     Config.ArmedLockEnabled = not Config.ArmedLockEnabled
+    CurrentTarget = nil
     UpdateVisuals()
     SaveConfig()
 end)
@@ -1646,4 +1654,4 @@ end)
 
 if Config.CameraForce then startCameraForce() end
 RefreshAllESP() UpdateFriendMarkers() UpdateVisuals()
-if Config.SizeBoostEnabled then task.wait(1) ApplySizeBoost() end 
+if Config.SizeBoostEnabled then task.wait(1) ApplySizeBoost() end

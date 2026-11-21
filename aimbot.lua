@@ -105,15 +105,46 @@ local function IsRobloxFriend(tp)
     return FriendCache[tp.UserId]
 end
 
+local WEAPON_KEYWORDS = {
+    "gun", "rifle", "pistol", "smg", "shotgun", "sniper", "ar", "ak", "m4",
+    "glock", "uzi", "mp5", "revolver", "carbine", "weapon", "arma", "fuzil", "sub"
+}
+
+local function NameLooksLikeWeapon(name)
+    if not name or name == "" then return false end
+    local lower = string.lower(name)
+    for _, kw in ipairs(WEAPON_KEYWORDS) do
+        if string.find(lower, kw, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
 local function HasWeaponInHand(player)
     if not player or not player.Character then return false end
     local char = player.Character
-    local tool = char:FindFirstChildOfClass("Tool")
-    if not tool or tool.Enabled == false then return false end
-    local handle = tool:FindFirstChild("Handle")
-    if not handle or not handle:IsA("BasePart") then return false end
-    if handle.Transparency >= 0.9 or handle.LocalTransparencyModifier >= 0.9 then return false end
-    return true
+
+    for _, child in ipairs(char:GetChildren()) do
+        if child:IsA("Tool") and child.Enabled ~= false then
+            local handle = child:FindFirstChild("Handle")
+            if handle and handle:IsA("BasePart") then
+                if handle.Transparency < 0.95 and handle.LocalTransparencyModifier < 0.95 then
+                    return true
+                end
+            else
+                return true
+            end
+        elseif (child:IsA("Model") or child:IsA("Folder")) and NameLooksLikeWeapon(child.Name) then
+            return true
+        end
+    end
+
+    if char:GetAttribute("Armed") == true or char:GetAttribute("HasWeapon") == true or player:GetAttribute("Armed") == true then
+        return true
+    end
+
+    return false
 end
 
 local function IsInSafeZone(player)
@@ -519,6 +550,26 @@ local HealthBars = {}
 local HealthVisibilityCache = {}
 local HEALTH_VIS_TTL = 0.1
 
+local function GetExcludeInstances(targetChar)
+    local list = { ScreenGui }
+    if LocalPlayer.Character then table.insert(list, LocalPlayer.Character) end
+    if targetChar then table.insert(list, targetChar) end
+    return list
+end
+
+local function IsPointVisible(origin, targetPos, targetChar)
+    if not origin or not targetPos then return false end
+    local dir = targetPos - origin
+    local dist = dir.Magnitude
+    if dist <= 0.05 then return true end
+    local rp = RaycastParams.new()
+    rp.FilterType = Enum.RaycastFilterType.Exclude
+    rp.FilterDescendantsInstances = GetExcludeInstances(targetChar)
+    rp.IgnoreWater = true
+    local result = workspace:Raycast(origin, dir, rp)
+    return result == nil
+end
+
 local function IsHeadVisible(player)
     Camera = workspace.CurrentCamera
     if not Camera then return false end
@@ -527,12 +578,7 @@ local function IsHeadVisible(player)
     if not char or not head then return false end
     local cache = HealthVisibilityCache[player]
     if cache and tick() - cache.time < HEALTH_VIS_TTL then return cache.visible end
-    local rp = RaycastParams.new()
-    rp.FilterType = Enum.RaycastFilterType.Exclude
-    rp.FilterDescendantsInstances = { LocalPlayer.Character, char }
-    rp.IgnoreWater = true
-    local result = workspace:Raycast(Camera.CFrame.Position, head.Position - Camera.CFrame.Position, rp)
-    local visible = (result == nil)
+    local visible = IsPointVisible(Camera.CFrame.Position, head.Position, char)
     HealthVisibilityCache[player] = { visible = visible, time = tick() }
     return visible
 end
@@ -993,96 +1039,48 @@ TargetHighlight.OutlineColor = Color3.fromRGB(255, 255, 255)
 TargetHighlight.OutlineTransparency = 0
 TargetHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 
-local ArmedLabels = {}
-
-local function GetArmedLabel(player)
-    local bgui = ArmedLabels[player]
-    if bgui and bgui.Parent then return bgui end
-    bgui = Instance.new("BillboardGui", ScreenGui)
-    bgui.Name = "armed_" .. tostring(player.UserId)
-    bgui.Size = UDim2.new(0, 110, 0, 20)
-    bgui.StudsOffset = Vector3.new(0, Config.HealthBarHeight + 3.0, 0)
-    bgui.AlwaysOnTop = true
-    bgui.MaxDistance = math.huge
-    bgui.LightInfluence = 0
-    bgui.ResetOnSpawn = false
-    bgui.Enabled = false
-    local lbl = Instance.new("TextLabel", bgui)
-    lbl.Size = UDim2.new(1, 0, 1, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = "🔫 ARMADO"
-    lbl.TextColor3 = Color3.fromRGB(255, 30, 30)
-    lbl.Font = Enum.Font.SourceSansBold
-    lbl.TextSize = 15
-    lbl.TextStrokeTransparency = 0
-    lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    ArmedLabels[player] = bgui
-    return bgui
-end
-
-local function UpdateAllArmedLabels()
-    Camera = workspace.CurrentCamera
-    if not Camera then return end
-    local myChar = LocalPlayer.Character
-    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-    if not myRoot then
-        for _, bgui in pairs(ArmedLabels) do bgui.Enabled = false end
-        return
-    end
-    local viewportCenter = Camera.ViewportSize / 2
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer then
-            local char = p.Character
-            local head = char and char:FindFirstChild("Head")
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            local hasWep = HasWeaponInHand(p)
-            local showLabel = false
-            if Config.ShowArmedLabel and hasWep and head and hum and hum.Health > 0 and hrp then
-                local dist = (hrp.Position - myRoot.Position).Magnitude
-                if dist <= Config.MaxDistance then
-                    local aimPart = char:FindFirstChild(Config.AimPart) or hrp
-                    local sp, onScreen = Camera:WorldToViewportPoint(aimPart.Position)
-                    if onScreen then
-                        local screenDist = (Vector2.new(sp.X, sp.Y) - Vector2.new(viewportCenter.X, viewportCenter.Y)).Magnitude
-                        if screenDist <= Config.FOV_Sticky then
-                            showLabel = true
-                        end
-                    end
-                end
-            end
-            if showLabel then
-                local bgui = GetArmedLabel(p)
-                if bgui.Adornee ~= head then bgui.Adornee = head end
-                bgui.StudsOffset = Vector3.new(0, Config.HealthBarHeight + 3.0, 0)
-                bgui.Enabled = true
-            elseif ArmedLabels[p] then
-                ArmedLabels[p].Enabled = false
-            end
-        end
-    end
-    for p, bgui in pairs(ArmedLabels) do
-        if not p.Parent then bgui:Destroy() ArmedLabels[p] = nil end
-    end
-end
-
-local function DestroyLockRing() TargetHighlight.Adornee = nil end
-local function UpdateLockRing(tp)
-    if not tp or not tp.Character then TargetHighlight.Adornee = nil return end
-    TargetHighlight.Adornee = tp.Character
-end
-
 -- ======================================================
--- UTILITÁRIOS DE MIRA
+-- UTILITÁRIOS DE MIRA E VISIBILIDADE
 -- ======================================================
 local function IsVisible(part)
     Camera = workspace.CurrentCamera
     if not part or not Camera then return false end
-    local rp = RaycastParams.new()
-    rp.FilterType = Enum.RaycastFilterType.Exclude
-    rp.FilterDescendantsInstances = { LocalPlayer.Character, part.Parent }
-    local r = workspace:Raycast(Camera.CFrame.Position, part.Position - Camera.CFrame.Position, rp)
-    return r == nil
+    local char = part.Parent
+    if char and not char:IsA("Model") then
+        char = char:FindFirstAncestorOfClass("Model")
+    end
+    return IsPointVisible(Camera.CFrame.Position, part.Position, char)
+end
+
+local function IsPlayerClearlyVisible(p)
+    Camera = workspace.CurrentCamera
+    if not p or not p.Character or not Camera then return false end
+    local char = p.Character
+    local camPos = Camera.CFrame.Position
+
+    local candidates = {}
+    local head = char:FindFirstChild("Head")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+    local aimPart = char:FindFirstChild(Config.AimPart)
+
+    if head then table.insert(candidates, head.Position) end
+    if aimPart then table.insert(candidates, aimPart.Position) end
+    if torso then table.insert(candidates, torso.Position) end
+    if root then
+        table.insert(candidates, root.Position)
+        table.insert(candidates, root.Position + root.CFrame.RightVector * 0.9)
+        table.insert(candidates, root.Position - root.CFrame.RightVector * 0.9)
+    end
+
+    if #candidates == 0 then return false end
+
+    for _, pos in ipairs(candidates) do
+        if IsPointVisible(camPos, pos, char) then
+            return true
+        end
+    end
+    return false
 end
 
 local function GetPlayerDistance3D(p)
@@ -1103,7 +1101,20 @@ local function IsTargetValid(p)
     if GetPlayerDistance3D(p) > Config.MaxDistance then return false end
     if IsInSafeZone(p) then return false end
     if IsPlayerMyTeammate(p) then return false end
-    if Config.IgnoreWalls and not IsVisible(part) then return false end
+    if Config.IgnoreWalls and not IsPlayerClearlyVisible(p) then return false end
+    return true
+end
+
+local function IsArmedTargetValid(p)
+    if not p or not p.Character then return false end
+    local h = p.Character:FindFirstChildOfClass("Humanoid")
+    local part = p.Character:FindFirstChild(Config.AimPart) or p.Character:FindFirstChild("HumanoidRootPart") or p.Character:FindFirstChild("Head")
+    if not h or h.Health <= 0 or not part then return false end
+    if GetPlayerDistance3D(p) > Config.MaxDistance then return false end
+    if IsInSafeZone(p) then return false end
+    if IsPlayerMyTeammate(p) then return false end
+    if not HasWeaponInHand(p) then return false end
+    if not IsPlayerClearlyVisible(p) then return false end
     return true
 end
 
@@ -1143,6 +1154,78 @@ local function GetScreenDistanceToPlayer(p)
 end
 
 -- ======================================================
+-- LABELS "ARMADO" (SOMENTE VISÍVEIS / SEM PAREDE)
+-- ======================================================
+local ArmedLabels = {}
+
+local function GetArmedLabel(player)
+    local bgui = ArmedLabels[player]
+    if bgui and bgui.Parent then return bgui end
+    bgui = Instance.new("BillboardGui", ScreenGui)
+    bgui.Name = "armed_" .. tostring(player.UserId)
+    bgui.Size = UDim2.new(0, 110, 0, 22)
+    bgui.StudsOffset = Vector3.new(0, Config.HealthBarHeight + 3.0, 0)
+    bgui.AlwaysOnTop = true
+    bgui.MaxDistance = math.huge
+    bgui.LightInfluence = 0
+    bgui.ResetOnSpawn = false
+    bgui.Enabled = false
+    local lbl = Instance.new("TextLabel", bgui)
+    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = "🔫 ARMADO"
+    lbl.TextColor3 = Color3.fromRGB(255, 30, 30)
+    lbl.Font = Enum.Font.SourceSansBold
+    lbl.TextSize = 15
+    lbl.TextStrokeTransparency = 0
+    lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    ArmedLabels[player] = bgui
+    return bgui
+end
+
+local function UpdateAllArmedLabels()
+    if not Config.ShowArmedLabel then
+        for _, bgui in pairs(ArmedLabels) do
+            if bgui then bgui.Enabled = false end
+        end
+        return
+    end
+    local myChar = LocalPlayer.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            local char = p.Character
+            local head = char and char:FindFirstChild("Head")
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local hasWep = HasWeaponInHand(p)
+            local inRange = true
+            if myRoot and hrp then
+                inRange = ((hrp.Position - myRoot.Position).Magnitude <= Config.MaxDistance)
+            end
+            local visible = IsPlayerClearlyVisible(p)
+            if hasWep and visible and inRange and head and hum and hum.Health > 0 and not IsPlayerMyTeammate(p) and not IsInSafeZone(p) then
+                local bgui = GetArmedLabel(p)
+                if bgui.Adornee ~= head then bgui.Adornee = head end
+                bgui.StudsOffset = Vector3.new(0, Config.HealthBarHeight + 3.0, 0)
+                bgui.Enabled = true
+            elseif ArmedLabels[p] then
+                ArmedLabels[p].Enabled = false
+            end
+        end
+    end
+    for p, bgui in pairs(ArmedLabels) do
+        if not p.Parent then bgui:Destroy() ArmedLabels[p] = nil end
+    end
+end
+
+local function DestroyLockRing() TargetHighlight.Adornee = nil end
+local function UpdateLockRing(tp)
+    if not tp or not tp.Character then TargetHighlight.Adornee = nil return end
+    TargetHighlight.Adornee = tp.Character
+end
+
+-- ======================================================
 -- DETECÇÃO DE TIROS E AMEAÇAS
 -- ======================================================
 local function GetEmitterPosition(sound)
@@ -1176,7 +1259,7 @@ local function FindNearestShooterByPosition(sourcePos, maxSourceDist, maxShooter
         if p ~= LocalPlayer and IsThreatValid(p) then
             local char = p.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if hrp and char:FindFirstChildOfClass("Tool") then
+            if hrp and HasWeaponInHand(p) then
                 local score = 0
                 if sourcePos then
                     local dToSource = (hrp.Position - sourcePos).Magnitude
@@ -1219,8 +1302,7 @@ local function FindShooterFromDamage()
                 local dist = (hrp.Position - myPos).Magnitude
                 if dist <= 400 then
                     local score = -dist
-                    local tool = char:FindFirstChildOfClass("Tool")
-                    if tool then
+                    if HasWeaponInHand(p) then
                         local pHum = char:FindFirstChildOfClass("Humanoid")
                         local pHead = char:FindFirstChild("Head")
                         if pHum and pHum.Health > 0 and pHead then
@@ -1374,7 +1456,7 @@ if LocalPlayer.Character then HookDamageDetection(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(HookDamageDetection)
 
 -- ======================================================
--- TARGETING
+-- TARGETING (SÓ ARMADOS NÃO TRAVA ATRÁS DE PAREDE)
 -- ======================================================
 local function GetThreatTarget()
     if next(DamageThreats) then
@@ -1390,29 +1472,32 @@ local function GetThreatTarget()
     return nil, nil
 end
 
-local function GetTarget()
-    local t, s = GetThreatTarget()
-    if t then return t, s end
-
-    if Config.ArmedLockEnabled then
-        if CurrentTarget and IsTargetValid(CurrentTarget) and not IsManuallyReleased(CurrentTarget) and HasWeaponInHand(CurrentTarget) then
-            local d, on = GetScreenDistanceToPlayer(CurrentTarget)
-            if on and d <= Config.FOV_Sticky then return CurrentTarget, "armed_sticky" end
+local function FindArmedTarget(maxScreenRadius)
+    if CurrentTarget and IsArmedTargetValid(CurrentTarget) and not IsManuallyReleased(CurrentTarget) then
+        local d, on = GetScreenDistanceToPlayer(CurrentTarget)
+        if on and (not maxScreenRadius or d <= maxScreenRadius) then
+            return CurrentTarget, "armed_sticky"
         end
+    end
 
-        local bestArmed, bestArmedD = nil, Config.FOV
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and IsTargetValid(p) and not IsManuallyReleased(p) and HasWeaponInHand(p) then
-                local d, on = GetScreenDistanceToPlayer(p)
-                if on and d < bestArmedD then
-                    bestArmedD = d
+    local bestArmed, bestScore = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and IsArmedTargetValid(p) and not IsManuallyReleased(p) then
+            local d, on = GetScreenDistanceToPlayer(p)
+            local dist3D = GetPlayerDistance3D(p)
+            if on and (not maxScreenRadius or d <= maxScreenRadius) then
+                local score = d + (dist3D * 0.5)
+                if score < bestScore then
+                    bestScore = score
                     bestArmed = p
                 end
             end
         end
-        if bestArmed then return bestArmed, "armed" end
     end
+    return bestArmed, "armed"
+end
 
+local function GetNormalTarget()
     if CurrentTarget and IsTargetValid(CurrentTarget) and not IsManuallyReleased(CurrentTarget) then
         local d, on = GetScreenDistanceToPlayer(CurrentTarget)
         if on and d <= Config.FOV_Sticky then return CurrentTarget, "sticky" end
@@ -1429,6 +1514,18 @@ local function GetTarget()
         end
     end
     return best, "fov"
+end
+
+local function GetTarget()
+    local t, s = GetThreatTarget()
+    if t then return t, s end
+
+    if Config.ArmedLockEnabled then
+        local armedP, armedS = FindArmedTarget(nil)
+        if armedP then return armedP, armedS end
+    end
+
+    return GetNormalTarget()
 end
 
 -- ======================================================
@@ -1585,12 +1682,16 @@ DamageDetectBtn.MouseButton1Click:Connect(function()
     SaveConfig()
 end)
 
-ArmedLockBtn.MouseButton1Click:Connect(function() Config.ArmedLockEnabled = not Config.ArmedLockEnabled UpdateVisuals() SaveConfig() end)
+ArmedLockBtn.MouseButton1Click:Connect(function()
+    Config.ArmedLockEnabled = not Config.ArmedLockEnabled
+    CurrentTarget = nil
+    UpdateVisuals()
+    SaveConfig()
+end)
+
 ArmedLabelBtn.MouseButton1Click:Connect(function()
     Config.ShowArmedLabel = not Config.ShowArmedLabel
-    if not Config.ShowArmedLabel then
-        for _, bgui in pairs(ArmedLabels) do bgui.Enabled = false end
-    end
+    UpdateAllArmedLabels()
     UpdateVisuals()
     SaveConfig()
 end)
@@ -1735,7 +1836,12 @@ RunService.RenderStepped:Connect(function()
         FovCircle.Visible = true
         StickyCircle.Visible = true
     else
-        targetPlayer, source = GetThreatTarget()
+        if Config.ArmedLockEnabled then
+            targetPlayer, source = FindArmedTarget(nil)
+        end
+        if not targetPlayer then
+            targetPlayer, source = GetThreatTarget()
+        end
         FovCircle.Visible = false
         StickyCircle.Visible = false
     end
@@ -1754,72 +1860,63 @@ RunService.RenderStepped:Connect(function()
     UpdateLockRing(targetPlayer)
     local d3 = math.floor(GetPlayerDistance3D(targetPlayer))
 
-    if Config.Enabled then
-        if source == "damage" then
-            TargetInfo.Text = "💥 ALVO: " .. targetPlayer.Name .. " (" .. d3 .. "m)"
-            TargetInfo.TextColor3 = Color3.fromRGB(255, 60, 60)
-        elseif source == "armed" or source == "armed_sticky" then
-            TargetInfo.Text = "🔫 ARMADO: " .. targetPlayer.Name .. " (" .. d3 .. "m)"
-            TargetInfo.TextColor3 = Color3.fromRGB(255, 120, 0)
-        else
-            TargetInfo.Text = "Travado: " .. targetPlayer.Name .. " (" .. d3 .. "m)"
-            TargetInfo.TextColor3 = Color3.fromRGB(0, 255, 0)
-        end
-
-        local targetPart
-        local aimingNeck = (Config.AimPart == "Neck")
-        local isHeadshot = isAimingHead and tick() < headshotTimer
-        if aimingNeck then
-            if isHeadshot then
-                targetPart = targetPlayer.Character:FindFirstChild("Head")
-            else
-                local torso = targetPlayer.Character:FindFirstChild("UpperTorso") or targetPlayer.Character:FindFirstChild("Torso")
-                if torso then
-                    local ncf = torso.CFrame * CFrame.new(0, torso.Size.Y / 2.5, 0)
-                    targetPart = { Position = ncf.Position, AssemblyLinearVelocity = torso.AssemblyLinearVelocity }
-                end
-            end
-        else
-            targetPart = targetPlayer.Character:FindFirstChild(Config.AimPart) or targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-        end
-
-        if targetPart then
-            local vel = targetPart.AssemblyLinearVelocity or Vector3.zero
-            local camPos = Camera.CFrame.Position
-            local rDist = (targetPart.Position - camPos).Magnitude
-            local pred = Config.Prediction
-            if rDist < 30 then pred = Config.Prediction * 0.3
-            elseif rDist < 70 then pred = Config.Prediction * 0.7 end
-            local predictedPos = targetPart.Position + (vel * pred)
-            if aimingNeck and isHeadshot then
-                local h = targetPlayer.Character:FindFirstChild("Head")
-                if h then
-                    local top = h.Position + Vector3.new(0, h.Size.Y / 2, 0)
-                    local cur = (predictedPos - camPos).Unit
-                    if (camPos + cur * rDist).Y > top.Y then predictedPos = top end
-                end
-            end
-            local aimDir = (predictedPos - camPos).Unit
-            local targetCF = CFrame.new(camPos, camPos + aimDir)
-            local lerpAmount = Config.Smoothness
-            if source == "damage" or source == "armed" or source == "armed_sticky" then
-                local lookDot = Camera.CFrame.LookVector:Dot(aimDir)
-                if lookDot < 0.85 then lerpAmount = 0.65
-                elseif lookDot < 0.95 then lerpAmount = 0.45
-                elseif lookDot < 0.98 then lerpAmount = 0.32 end
-            end
-            Camera.CFrame = Camera.CFrame:Lerp(targetCF, lerpAmount)
-        end
+    if source == "damage" then
+        TargetInfo.Text = "💥 ALVO: " .. targetPlayer.Name .. " (" .. d3 .. "m)"
+        TargetInfo.TextColor3 = Color3.fromRGB(255, 60, 60)
+    elseif source == "armed" or source == "armed_sticky" then
+        TargetInfo.Text = "🔫 ARMADO: " .. targetPlayer.Name .. " (" .. d3 .. "m)"
+        TargetInfo.TextColor3 = Color3.fromRGB(255, 120, 0)
+    elseif Config.Enabled then
+        TargetInfo.Text = "Travado: " .. targetPlayer.Name .. " (" .. d3 .. "m)"
+        TargetInfo.TextColor3 = Color3.fromRGB(0, 255, 0)
     else
         TargetInfo.Text = "📡 FOCO: " .. targetPlayer.Name .. " (" .. d3 .. "m)"
         TargetInfo.TextColor3 = Color3.fromRGB(255, 180, 60)
-        local part = targetPlayer.Character:FindFirstChild("Head") or targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if part then
-            local camPos = Camera.CFrame.Position
-            local aimDir = (part.Position - camPos).Unit
-            local targetCF = CFrame.new(camPos, camPos + aimDir)
-            Camera.CFrame = Camera.CFrame:Lerp(targetCF, 0.15)
+    end
+
+    local targetPart
+    local aimingNeck = (Config.AimPart == "Neck")
+    local isHeadshot = isAimingHead and tick() < headshotTimer
+    if aimingNeck then
+        if isHeadshot then
+            targetPart = targetPlayer.Character:FindFirstChild("Head")
+        else
+            local torso = targetPlayer.Character:FindFirstChild("UpperTorso") or targetPlayer.Character:FindFirstChild("Torso")
+            if torso then
+                local ncf = torso.CFrame * CFrame.new(0, torso.Size.Y / 2.5, 0)
+                targetPart = { Position = ncf.Position, AssemblyLinearVelocity = torso.AssemblyLinearVelocity }
+            end
         end
+    else
+        targetPart = targetPlayer.Character:FindFirstChild(Config.AimPart) or targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    end
+
+    if targetPart then
+        local vel = targetPart.AssemblyLinearVelocity or Vector3.zero
+        local camPos = Camera.CFrame.Position
+        local rDist = (targetPart.Position - camPos).Magnitude
+        local pred = Config.Prediction
+        if rDist < 30 then pred = Config.Prediction * 0.3
+        elseif rDist < 70 then pred = Config.Prediction * 0.7 end
+        local predictedPos = targetPart.Position + (vel * pred)
+        if aimingNeck and isHeadshot then
+            local h = targetPlayer.Character:FindFirstChild("Head")
+            if h then
+                local top = h.Position + Vector3.new(0, h.Size.Y / 2, 0)
+                local cur = (predictedPos - camPos).Unit
+                if (camPos + cur * rDist).Y > top.Y then predictedPos = top end
+            end
+        end
+        local aimDir = (predictedPos - camPos).Unit
+        local targetCF = CFrame.new(camPos, camPos + aimDir)
+        local lerpAmount = Config.Enabled and Config.Smoothness or 0.15
+        if source == "damage" or source == "armed" or source == "armed_sticky" then
+            local lookDot = Camera.CFrame.LookVector:Dot(aimDir)
+            if lookDot < 0.85 then lerpAmount = 0.65
+            elseif lookDot < 0.95 then lerpAmount = 0.45
+            elseif lookDot < 0.98 then lerpAmount = 0.32 end
+        end
+        Camera.CFrame = Camera.CFrame:Lerp(targetCF, lerpAmount)
     end
 end)
 
